@@ -1,6 +1,6 @@
 # Ecoshine Chốt Số
 
-Web app (cài được lên điện thoại như app) để chốt số điện hằng tháng: chọn nhiều ảnh công tơ cùng lúc, AI đọc chỉ số, app tính kWh, tiền, số giờ thuê và tiền hóa đơn đúng quy trình Ecoshine.
+Web app (cài được lên điện thoại như app) để chốt số điện hằng tháng: chọn nhiều ảnh công tơ cùng lúc, Gemini đọc chỉ số, app tính kWh, tiền, số giờ thuê và tiền hóa đơn đúng quy trình Ecoshine.
 
 Không cần build. Toàn bộ là HTML + JavaScript tĩnh nên chạy được trên GitHub Pages.
 
@@ -19,11 +19,11 @@ Mở http://localhost:8765. Bộ test: http://localhost:8765/tests/engine.test.h
 1. Tạo kho **công khai** mới, đẩy toàn bộ thư mục này lên (không có `private/`).
 2. Settings → Pages → Deploy from branch → `main` / root.
 3. Mở link `https://<tên>.github.io/<kho>/` trên điện thoại, chọn "Thêm vào màn hình chính".
-4. Ở Cài đặt: dán khóa API, nạp file cấu hình `.json` (mẫu: `private/cau-hinh.json`).
+4. Ở Cài đặt: dán khóa API Gemini (lấy ở Google AI Studio), nạp file cấu hình `.json` (mẫu: `private/cau-hinh.json`).
 
 ## Cấu trúc
 - `js/engine.js` bộ tính (thuần hàm, có test).
-- `js/ocr.js` thu nhỏ ảnh và gọi AI đọc chỉ số.
+- `js/ocr.js` thu nhỏ ảnh và gọi Gemini đọc chỉ số.
 - `js/store.js` lưu cấu hình, lịch sử trong trình duyệt.
 - `js/app.js` giao diện.
 

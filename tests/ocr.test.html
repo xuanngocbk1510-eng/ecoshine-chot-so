@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><title>Test đọc ảnh</title>
+<style>body{font:15px system-ui;margin:20px}.ok{color:#0a7a3d}.bad{color:#b00020;font-weight:700}</style></head>
+<body><h1>Test đọc ảnh (Gemini, giả lập mạng)</h1><pre id="out"></pre>
+<script type="module">
+import { buildRequest, parseResponse, readImage, registerToSlot, DEFAULT_MODEL } from '../js/ocr.js';
+
+const out = document.getElementById('out');
+let fails = 0;
+const eq = (name, got, want) => { const ok = JSON.stringify(got) === JSON.stringify(want); if (!ok) fails++; out.insertAdjacentHTML('beforeend', `<span class="${ok ? 'ok' : 'bad'}">${ok ? 'ĐẠT' : 'SAI'}</span> ${name}${ok ? '' : ` — được ${JSON.stringify(got)}, cần ${JSON.stringify(want)}`}\n`); };
+const throws = (name, fn, re) => { let msg = ''; try { fn(); } catch (e) { msg = e.message; } eq(name, re.test(msg), true); };
+
+const sample = { image_kind: 'meter_photo', photo_time: '30 Tháng 10, 2026', place: null, meters: [{ serial: '123', readings: [{ register: '2.8.1', value: 1000.5, confidence: 'high' }] }], note: null };
+const wrap = (text, extra = {}) => ({ candidates: [{ content: { parts: [{ text }] }, ...extra }] });
+
+// Yêu cầu gửi đi
+const req = buildRequest('QUJD');
+eq('ảnh gửi dạng inlineData jpeg', req.contents[0].parts[0], { inlineData: { mimeType: 'image/jpeg', data: 'QUJD' } });
+eq('yêu cầu trả JSON theo lược đồ', [req.generationConfig.responseMimeType, req.generationConfig.responseSchema.type, req.generationConfig.temperature], ['application/json', 'OBJECT', 0]);
+eq('mô hình mặc định là Gemini', DEFAULT_MODEL.startsWith('gemini'), true);
+
+// Đọc phản hồi
+eq('JSON thường', parseResponse(wrap(JSON.stringify(sample))), sample);
+eq('JSON bọc ```json', parseResponse(wrap('```json\n' + JSON.stringify(sample) + '\n```')), sample);
+eq('thiếu meters thì thành mảng rỗng', parseResponse(wrap('{"image_kind":"other"}')).meters, []);
+throws('bị chặn nội dung', () => parseResponse({ promptFeedback: { blockReason: 'SAFETY' } }), /từ chối/);
+throws('không có ứng viên', () => parseResponse({ candidates: [] }), /không trả kết quả/);
+throws('JSON hỏng do bị cắt', () => parseResponse(wrap('{"image_kind":"meter_ph', { finishReason: 'MAX_TOKENS' })), /bị cắt/);
+
+// Gọi mạng giả lập
+const realFetch = window.fetch;
+let seen;
+window.fetch = async (url, opts) => { seen = { url, opts }; return new Response(JSON.stringify(wrap(JSON.stringify(sample))), { status: 200 }); };
+const got = await readImage({ apiKey: 'K', model: 'gemini-x', base64: 'QUJD' });
+eq('gọi đúng địa chỉ', seen.url, 'https://generativelanguage.googleapis.com/v1beta/models/gemini-x:generateContent');
+eq('khóa gửi qua tiêu đề x-goog-api-key', seen.opts.headers['x-goog-api-key'], 'K');
+eq('khóa không nằm trên địa chỉ', seen.url.includes('K='), false);
+eq('kết quả đọc được', got.meters[0].readings[0].value, 1000.5);
+
+window.fetch = async () => new Response(JSON.stringify({ error: { message: 'API key not valid. Please pass a valid API key.' } }), { status: 400 });
+let msg = ''; try { await readImage({ apiKey: 'bad', base64: 'QUJD' }); } catch (e) { msg = e.message; }
+eq('khóa sai báo tiếng Việt', /Khóa API sai/.test(msg), true);
+window.fetch = async () => new Response('{}', { status: 404 });
+msg = ''; try { await readImage({ apiKey: 'k', model: 'abc', base64: 'QUJD' }); } catch (e) { msg = e.message; }
+eq('sai tên mô hình báo rõ', /Không tìm thấy mô hình "abc"/.test(msg), true);
+window.fetch = realFetch;
+
+eq('mã thanh ghi 2.8.2 là cao điểm', registerToSlot('2.8.2'), 'peak');
+eq('mã 1.8.1 cũng nhận (chỉ là nhãn)', registerToSlot('1.8.1'), 'normal');
+eq('mã lạ bỏ qua', registerToSlot('0.9.1'), null);
+
+out.insertAdjacentHTML('afterbegin', `<b class="${fails ? 'bad' : 'ok'}">${fails ? fails + ' ca sai' : 'Tất cả đạt'}</b>\n\n`);
+document.title = fails ? 'FAIL' : 'PASS';
+</script></body></html>

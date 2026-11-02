@@ -330,9 +330,9 @@ function viewSettings(cfg) {
   const s = store.settings.get();
   return `
     <section class="card"><h2>Khóa AI đọc ảnh</h2>
-      <label>Khóa API Anthropic <input type="password" data-act="apikey" value="${esc(s.apiKey)}" autocomplete="off" placeholder="sk-ant-..."></label>
+      <label>Khóa API Gemini <input type="password" data-act="apikey" value="${esc(s.apiKey)}" autocomplete="off" placeholder="AIza..."></label>
       <label>Mô hình <input type="text" data-act="model" value="${esc(s.model)}" placeholder="${DEFAULT_MODEL}"></label>
-      <p class="muted small">Khóa chỉ lưu trong trình duyệt của thiết bị này. Nhớ đặt hạn mức chi tiêu thấp cho khóa trên trang quản lý của Anthropic.</p></section>
+      <p class="muted small">Khóa chỉ lưu trong trình duyệt của thiết bị này. Nên giới hạn khóa chỉ dùng cho Gemini API và đặt hạn mức chi tiêu thấp trên Google AI Studio.</p></section>
     <section class="card"><h2>Thông tin nhận tiền</h2>
       <label>Số tài khoản nhận tiền (in vào Giấy đề nghị thanh toán) <input type="text" inputmode="numeric" data-act="bankaccount" value="${esc(s.bankAccount)}" autocomplete="off"></label>
       <p class="muted small">Chỉ lưu trong trình duyệt của thiết bị này, không nằm trong cấu hình hay bản sao lưu.</p></section>
@@ -367,7 +367,7 @@ async function handleFiles(fileList) {
   state.progress = { done: 0, total: files.length };
   render();
   const results = await readMany(files, {
-    apiKey, model: model || DEFAULT_MODEL,
+    apiKey, model: model && !/^claude/i.test(model) ? model : DEFAULT_MODEL,
     onProgress: (i, st) => {
       if (st === 'done' || st === 'error') {
         state.progress.done += 1;

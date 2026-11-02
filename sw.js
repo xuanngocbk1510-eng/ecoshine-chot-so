@@ -1,6 +1,6 @@
 // Lưu vỏ app để mở nhanh và dùng được khi mạng chập chờn. Không bao giờ lưu cuộc gọi tới API.
-const CACHE = 'ecs-v4';
-const SHELL = ['./', 'index.html', 'css/style.css', 'js/app.js', 'js/engine.js', 'js/ocr.js', 'js/store.js', 'js/export.js', 'js/zip.js', 'js/vendor/exceljs.min.js', 'manifest.webmanifest', 'icons/icon.svg'];
+const CACHE = 'ecs-v5';
+const SHELL = ['./', 'index.html', 'css/style.css', 'js/app.js', 'js/engine.js', 'js/ocr.js', 'js/store.js', 'js/export.js', 'js/zip.js', 'js/lock.js', 'js/vendor/exceljs.min.js', 'manifest.webmanifest', 'icons/icon.svg'];
 
 self.addEventListener('install', (e) => {
   // no-store: bỏ qua bộ nhớ đệm của GitHub Pages (giữ bản cũ tới 10 phút) để luôn nhận bản mới nhất.

@@ -33,7 +33,7 @@ export function meterUsage(reading, integerReadings = true) {
  * @param rates    { hourPrice, vat }
  * @param input    { readings: {[meterId]: {start:{normal,peak,low}, end:{...}}},
  *                   prices: {normal,peak,low},
- *                   roofBalance?: number, reactive?: number }
+ *                   roofBalance?: number, reactive?: number, adjust?: number }
  */
 export function computeProject(project, rates, input) {
   const warnings = [];
@@ -71,8 +71,12 @@ export function computeProject(project, rates, input) {
     roof = Math.max(0, Math.min(num(input.roofBalance), share * saving));
   }
   const reactive = Math.max(0, num(input.reactive));
+  // Bù trừ các kỳ trước: số có dấu, dương là thu thêm (tính thiếu), âm là giảm (tính thừa).
+  const adjust = num(input.adjust);
 
-  const base = use - roof - reactive;
+  // Mái tôn là khoản Ecoshine thu lại từ phần tiết kiệm của khách, nên cộng vào tiền khách trả;
+  // phản kháng là khoản Ecoshine chịu, nên trừ.
+  const base = use + roof + adjust - reactive;
   const vatRate = num(rates.vat);
   const withVat = base * (1 + vatRate);
   const hoursRaw = withVat / (1 + vatRate) / num(rates.hourPrice);
@@ -89,7 +93,7 @@ export function computeProject(project, rates, input) {
 
   return {
     kwh, perMeter, money, total, use, saving,
-    adjustments: { roof, reactive },
+    adjustments: { roof, reactive, adjust },
     base, withVat, hoursRaw, hours, invoice, warnings,
   };
 }

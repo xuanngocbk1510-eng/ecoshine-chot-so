@@ -3,8 +3,9 @@ import { readMany, registerToSlot, DEFAULT_MODEL } from './ocr.js';
 import * as store from './store.js';
 import { buildAll } from './export.js';
 import { zipFiles } from './zip.js';
+import * as lock from './lock.js';
 
-const APP_VERSION = '2026-11-02b';
+const APP_VERSION = '2026-11-02c';
 const $app = document.getElementById('app');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SLOT_OPTS = [...SLOTS.map((s) => [s, SLOT_LABEL[s]]), ['total', 'Tổng (để kiểm tra)'], ['skip', 'Bỏ qua']];
@@ -22,8 +23,7 @@ const state = {
   rows: [],          // mỗi chỉ số đọc được từ ảnh
   progress: null,    // {done, total}
   ends: {},          // `${pid}/${mid}` -> {normal, peak, low, total}
-  starts: {},        // ghi đè đầu kỳ do anh sửa tay
-  manual: {},        // pid -> {reactive, roofBalance}
+  manual: {},        // pid -> {reactive, adjust, roofBalance}
   exported: null,    // kết quả lần xuất file gần nhất {key, files, issues, notes}
   busy: false,
 };
@@ -76,11 +76,11 @@ function rebuildEnds() {
   }
 }
 
+// Đầu kỳ chỉ lấy từ file Excel tháng trước (chỉ số khởi tạo trong cấu hình) hoặc từ tháng đã chốt gần nhất; không sửa tay ở đây.
 function gatherLedger(cfg, p, meter) {
   const key = mkey(p.id, meter.id);
-  const start = { ...store.startFor(p, meter, periodKey()).value, ...(state.starts[key] || {}) };
-  const end = { ...(state.ends[key] || {}) };
-  return { key, start, end, startFrom: store.startFor(p, meter, periodKey()).from };
+  const st = store.startFor(p, meter, periodKey());
+  return { key, start: st.value, end: { ...(state.ends[key] || {}) }, startFrom: st.from };
 }
 
 function computeAll(cfg) {
@@ -107,11 +107,13 @@ function computeAll(cfg) {
     }
     let roofBalance = manual.roofBalance;
     if (p.roof && (roofBalance === undefined || roofBalance === '')) roofBalance = lastRoofBalance(p);
+    // Chưa có số dư mái tôn thì không tính, kẻo thiếu tiền mà không biết.
+    if (p.roof && (roofBalance === '' || roofBalance === undefined || Number.isNaN(Number(roofBalance)))) missing.push('số dư mái tôn (anh nhập ở ô Số dư mái tôn)');
     const prices = p.prices || {};
     let result = null;
     if (!missing.length) {
       result = computeProject(p, cfg.company, {
-        readings, prices, roofBalance: Number(roofBalance), reactive: Number(manual.reactive),
+        readings, prices, roofBalance: Number(roofBalance), reactive: Number(manual.reactive), adjust: Number(manual.adjust),
       });
     }
     return { p, ledgers, missing: [...new Set(missing)], checks, result, roofBalance };
@@ -200,28 +202,40 @@ function renderResults() {
   el.innerHTML = computeAll(cfg).map((c) => projectCard(cfg, c)).join('');
 }
 
-function numInput(attrs, value, ph = '') {
-  return `<input type="number" step="any" inputmode="decimal" ${attrs} value="${value ?? ''}" placeholder="${ph}">`;
+// Ô nhập: số tiền, đơn giá... chỉ sửa được khi đã mở khóa bằng PIN (data-lock = chạm vào để mở khóa).
+function numInput(attrs, value, ph = '', gated = false) {
+  const lockAttr = gated && !lock.canEdit() ? ' readonly data-lock' : '';
+  return `<input type="number" step="any" inputmode="decimal" ${attrs}${lockAttr} value="${value ?? ''}" placeholder="${ph}">`;
+}
+
+const showNum = (v) => (v === undefined || v === '' || v === null ? '—' : Number(v).toLocaleString('vi-VN', { maximumFractionDigits: 2 }));
+
+function lockBar() {
+  if (!lock.hasPin()) return '<p class="lockbar warn">Chưa đặt mã PIN (vào Cài đặt). Hiện ai cầm thiết bị này cũng sửa được đơn giá.</p>';
+  return lock.canEdit() ? '<p class="lockbar">Đã mở khóa. Đơn giá và các khoản điều chỉnh sửa được, tự khóa lại sau 10 phút.</p>'
+    : '<p class="lockbar">Đơn giá và các khoản điều chỉnh đang khóa. Chạm vào ô để nhập PIN mở khóa.</p>';
 }
 
 function projectCard(cfg, c) {
   const { p, ledgers, missing, checks, result } = c;
   const manual = state.manual[p.id] || {};
   const meterRows = ledgers.map((L) => `
-    <div class="meter"><h4>${esc(L.meter.label || L.meter.id)}${L.startFrom ? `<small> · đầu kỳ lấy từ T${esc(L.startFrom.slice(5))}/${esc(L.startFrom.slice(0, 4))}</small>` : '<small> · đầu kỳ khởi tạo</small>'}</h4>
-      <table class="ledger"><thead><tr><th></th><th>Đầu kỳ</th><th>Cuối kỳ</th></tr></thead><tbody>
+    <div class="meter"><h4>${esc(L.meter.label || L.meter.id)}${L.startFrom ? `<small> · đầu kỳ lấy từ T${esc(L.startFrom.slice(5))}/${esc(L.startFrom.slice(0, 4))}, không sửa</small>` : '<small> · đầu kỳ lấy từ file Excel tháng trước, không sửa</small>'}</h4>
+      <table class="ledger"><thead><tr><th></th><th class="r">Đầu kỳ</th><th>Cuối kỳ</th></tr></thead><tbody>
       ${SLOTS.map((s) => `<tr><td>${SLOT_LABEL[s]}</td>
-        <td>${numInput(`data-act="start" data-k="${esc(L.key)}" data-s="${s}"`, L.start[s])}</td>
+        <td class="start">${showNum(L.start[s])}</td>
         <td>${numInput(`data-act="end" data-k="${esc(L.key)}" data-s="${s}"`, L.end[s], p.lowZero && s === 'low' ? '0' : '')}</td></tr>`).join('')}
       <tr><td class="muted">Tổng (kiểm tra)</td><td></td><td>${numInput(`data-act="end" data-k="${esc(L.key)}" data-s="total"`, L.end.total)}</td></tr>
       </tbody></table></div>`).join('');
 
+  const ctl = (f, v, ph) => numInput(`data-act="manual" data-p="${esc(p.id)}" data-f="${f}"`, v, ph, true);
   const extras = [
-    p.roof ? `<label>Số dư mái tôn còn lại ${numInput(`data-act="manual" data-p="${esc(p.id)}" data-f="roofBalance"`, c.roofBalance)}</label>` : '',
-    p.reactive ? `<label>Khấu trừ phản kháng (đồng) ${numInput(`data-act="manual" data-p="${esc(p.id)}" data-f="reactive"`, manual.reactive, '0')}</label>` : '',
+    p.roof ? `<label>Số dư mái tôn Ecoshine còn phải thu hồi (đồng) ${ctl('roofBalance', c.roofBalance)}</label>` : '',
+    p.adjust ? `<label>${esc(p.adjust.label || 'Bù trừ kỳ trước')} (đồng, số âm là giảm) ${ctl('adjust', manual.adjust, '0')}</label>` : '',
+    p.reactive ? `<label>Khấu trừ phản kháng (đồng, nhập số dương) ${ctl('reactive', manual.reactive, '0')}</label>` : '',
   ].join('');
 
-  const priceRow = `<div class="prices">${SLOTS.map((s) => `<label>${SLOT_LABEL[s]} (đ/kWh) ${numInput(`data-act="price" data-p="${esc(p.id)}" data-s="${s}"`, p.prices?.[s])}</label>`).join('')}</div>`;
+  const priceRow = `<div class="prices">${SLOTS.map((s) => `<label>${SLOT_LABEL[s]} (đ/kWh) ${numInput(`data-act="price" data-p="${esc(p.id)}" data-s="${s}"`, p.prices?.[s], '', true)}</label>`).join('')}</div>${lockBar()}`;
 
   const checkTxt = checks.map((k) => `<div class="flag ${k.ok ? 'ok' : 'bad'}">${esc(k.meter.label || k.meter.id)}: ${k.ok ? 'tổng ba khung khớp tổng công tơ' : `ba khung cộng lại lệch ${fmt.n2(k.diff)} kWh so với tổng, có thể đọc nhầm số`}</div>`).join('');
 
@@ -239,8 +253,9 @@ function projectCard(cfg, c) {
           <tr><td>Tiền điện theo giá EVN</td><td></td><td class="r">${fmt.vnd(result.total)}</td></tr>
           <tr><td>Sau chiết khấu (${Math.round(p.discount * 100)}%)</td><td></td><td class="r">${fmt.vnd(result.use)}</td></tr>
           <tr><td>Tiền tiết kiệm của khách</td><td></td><td class="r">${fmt.vnd(result.saving)}</td></tr>
-          ${p.roof ? `<tr><td>Khấu trừ mái tôn</td><td></td><td class="r">${fmt.vnd(result.adjustments.roof)}</td></tr>` : ''}
-          ${p.reactive ? `<tr><td>Khấu trừ phản kháng</td><td></td><td class="r">${fmt.vnd(result.adjustments.reactive)}</td></tr>` : ''}
+          ${p.roof ? `<tr><td>Thu hồi chi phí mái tôn (cộng)</td><td></td><td class="r">${fmt.vnd(result.adjustments.roof)}</td></tr>` : ''}
+          ${p.adjust ? `<tr><td>Bù trừ kỳ trước</td><td></td><td class="r">${fmt.vnd(result.adjustments.adjust)}</td></tr>` : ''}
+          ${p.reactive ? `<tr><td>Khấu trừ phản kháng (trừ)</td><td></td><td class="r">${fmt.vnd(result.adjustments.reactive)}</td></tr>` : ''}
           <tr><td>Số giờ chưa làm tròn</td><td></td><td class="r">${result.hoursRaw.toFixed(4)}</td></tr>
         </tbody></table></details>
       <button class="primary" data-act="close" data-p="${esc(p.id)}">Chốt tháng ${state.period.month}/${state.period.year} cho ${esc(p.name)}</button>`;
@@ -260,8 +275,8 @@ function viewHistory(cfg) {
   return `<section class="card"><h2>Các tháng đã chốt</h2>${list}</section>
     <section class="card"><h2>Sao lưu</h2>
       <button data-act="export">Tải bản sao lưu (.json)</button>
-      <label class="btn">Nạp bản sao lưu <input type="file" accept=".json" hidden data-act="import"></label>
-      <p class="muted small">Bản sao lưu chứa cấu hình và lịch sử, giữ ở nơi riêng tư. Khóa API không nằm trong đó.</p></section>`;
+      <button data-act="pickimport">Nạp bản sao lưu (cần PIN)</button><input type="file" accept=".json" hidden id="importfile" data-act="import">
+      <p class="muted small">Bản sao lưu chứa cấu hình và lịch sử, giữ ở nơi riêng tư. Khóa API và mã PIN không nằm trong đó.</p></section>`;
 }
 
 const KIND_LABEL = { client: 'Gửi khách', summary: 'Gửi kế toán', internal: 'Nội bộ, có kWh' };
@@ -337,8 +352,16 @@ function viewSettings(cfg) {
     <section class="card"><h2>Thông tin nhận tiền</h2>
       <label>Số tài khoản nhận tiền (in vào Giấy đề nghị thanh toán) <input type="text" inputmode="numeric" data-act="bankaccount" value="${esc(s.bankAccount)}" autocomplete="off"></label>
       <p class="muted small">Chỉ lưu trong trình duyệt của thiết bị này, không nằm trong cấu hình hay bản sao lưu.</p></section>
+    <section class="card"><h2>Khóa quyền sửa (mã PIN)</h2>
+      ${lock.hasPin()
+    ? `<p>${lock.canEdit() ? 'Đang <b>mở khóa</b> (tự khóa lại sau 10 phút hoặc khi rời app).' : 'Đang <b>khóa</b>: đơn giá, số dư mái tôn, bù trừ, phản kháng, cấu hình và lịch sử không sửa được.'}</p>
+       ${lock.canEdit() ? '<button data-act="relock">Khóa lại ngay</button>' : '<button class="primary" data-act="unlock">Mở khóa</button>'}`
+    : '<p>Chưa đặt mã PIN. Đặt PIN để chỉ anh mới sửa được đơn giá và cấu hình trên thiết bị này.</p>'}
+      <label>${lock.hasPin() ? 'Đổi mã PIN (cần đang mở khóa)' : 'Mã PIN mới (4 đến 12 ký tự)'} <input type="password" id="newpin" inputmode="numeric" autocomplete="new-password" maxlength="12"></label>
+      <button data-act="setpin">${lock.hasPin() ? 'Đổi PIN' : 'Đặt PIN'}</button>
+      <p class="muted small">PIN chỉ lưu dạng băm trong trình duyệt của thiết bị này, mỗi thiết bị đặt riêng. Đây là khóa mềm để người khác cầm máy không sửa được số. Quên PIN thì sao lưu lịch sử, xóa dữ liệu trang rồi nạp lại.</p></section>
     <section class="card"><h2>Cấu hình dự án</h2>
-      <label class="btn">Nạp file cấu hình (.json) <input type="file" accept=".json" hidden data-act="import"></label>
+      <button data-act="pickimport">Nạp file cấu hình (.json, cần PIN)</button><input type="file" accept=".json" hidden id="importfile" data-act="import">
       <details><summary>Sửa trực tiếp (nâng cao)</summary>
         <textarea id="cfgtext" rows="14" spellcheck="false">${esc(JSON.stringify(cfg, null, 2))}</textarea>
         <button data-act="savecfg">Lưu cấu hình</button></details>
@@ -354,6 +377,45 @@ function toast(msg) {
   clearTimeout(toast.t);
   toast.t = setTimeout(() => { t.hidden = true; }, 3500);
 }
+
+// ---------- Khóa PIN ----------
+
+function askPin(title, error = '') {
+  return new Promise((resolve) => {
+    const d = document.createElement('dialog');
+    d.className = 'pin';
+    d.innerHTML = `<form method="dialog"><h3>${esc(title)}</h3>
+      <input type="password" inputmode="numeric" autocomplete="off" maxlength="12" id="pinbox" aria-label="Mã PIN">
+      ${error ? `<p class="pinerr">${esc(error)}</p>` : ''}
+      <div class="row"><button value="cancel" type="button" id="pincancel">Hủy</button><button class="primary" value="ok">Mở khóa</button></div></form>`;
+    document.body.appendChild(d);
+    const done = (v) => { d.close(); d.remove(); resolve(v); };
+    d.querySelector('#pincancel').onclick = () => done(null);
+    d.addEventListener('cancel', (ev) => { ev.preventDefault(); done(null); });
+    d.querySelector('form').onsubmit = (ev) => { ev.preventDefault(); done(d.querySelector('#pinbox').value); };
+    d.showModal();
+    d.querySelector('#pinbox').focus();
+  });
+}
+
+// Trả về true khi được phép sửa (chưa đặt PIN, đang mở khóa, hoặc vừa nhập đúng PIN).
+async function requireUnlock() {
+  if (lock.canEdit()) return true;
+  let error = '';
+  for (;;) {
+    const pin = await askPin('Nhập mã PIN để sửa', error);
+    if (pin === null) return false;
+    try {
+      if (await lock.unlock(pin)) { toast('Đã mở khóa 10 phút'); return true; }
+      error = 'PIN sai';
+    } catch (err) { error = err.message; }
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!lock.hasPin()) return;
+  if (document.hidden) lock.lockNow(); else render();
+});
 
 // ---------- Đọc ảnh ----------
 
@@ -408,8 +470,22 @@ $app.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-act]');
   if (!el) return;
   const act = el.dataset.act;
+  if (el.hasAttribute('data-lock') && el.readOnly) {
+    if (await requireUnlock()) render();
+    return;
+  }
   if (act === 'tab') { state.tab = el.dataset.tab; render(); }
-  else if (act === 'rowdel') {
+  else if (act === 'pickimport') { if (await requireUnlock()) document.getElementById('importfile').click(); }
+  else if (act === 'unlock') { if (await requireUnlock()) render(); }
+  else if (act === 'relock') { lock.lockNow(); render(); }
+  else if (act === 'setpin') {
+    const box = document.getElementById('newpin');
+    if (!lock.validPin(box.value)) { toast('Mã PIN từ 4 đến 12 ký tự'); return; }
+    if (!(await requireUnlock())) return;
+    await lock.setPin(box.value);
+    toast('Đã lưu mã PIN');
+    render();
+  } else if (act === 'rowdel') {
     const id = Number(el.closest('[data-row]').dataset.row);
     state.rows = state.rows.filter((r) => r.id !== id);
     state.ends = {};
@@ -417,6 +493,7 @@ $app.addEventListener('click', async (e) => {
     render();
   } else if (act === 'close') closeMonth(el.dataset.p);
   else if (act === 'histdel') {
+    if (!(await requireUnlock())) return;
     if (!confirm(`Xóa kỳ ${el.dataset.k} khỏi lịch sử?`)) return;
     const h = store.history.get();
     delete h[el.dataset.k];
@@ -443,6 +520,7 @@ $app.addEventListener('click', async (e) => {
     a.click();
     URL.revokeObjectURL(a.href);
   } else if (act === 'savecfg') {
+    if (!(await requireUnlock())) return;
     try {
       store.config.set(JSON.parse(document.getElementById('cfgtext').value));
       toast('Đã lưu cấu hình');
@@ -487,6 +565,7 @@ $app.addEventListener('change', async (e) => {
     store.settings.set(s);
     toast('Đã lưu');
   } else if (act === 'import') {
+    if (!lock.canEdit()) { el.value = ''; toast('Cần mở khóa bằng PIN'); return; }
     try {
       const r = store.importAll(await el.files[0].text());
       toast(`Đã nạp ${[r.config && 'cấu hình', r.history && 'lịch sử'].filter(Boolean).join(' và ')}`);
@@ -500,8 +579,8 @@ $app.addEventListener('input', (e) => {
   if (!el) return;
   const v = el.value === '' ? '' : Number(el.value);
   const act = el.dataset.act;
+  if ((act === 'manual' || act === 'price') && !lock.canEdit()) { toast('Đã khóa lại, chạm vào ô để nhập PIN'); render(); return; }
   if (act === 'end') { (state.ends[el.dataset.k] ||= {})[el.dataset.s] = v; renderResults(); refocus(el); }
-  else if (act === 'start') { (state.starts[el.dataset.k] ||= {})[el.dataset.s] = v; renderResults(); refocus(el); }
   else if (act === 'manual') { (state.manual[el.dataset.p] ||= {})[el.dataset.f] = v; renderResults(); refocus(el); }
   else if (act === 'price') {
     const cfg = store.config.get();
@@ -550,7 +629,7 @@ function closeMonth(pid) {
   const roofAfter = c.p.roof ? Math.max(0, Number(c.roofBalance || 0) - c.result.adjustments.roof) : undefined;
   (hist[key] ||= {})[pid] = {
     readings, prices: { ...c.p.prices }, hours: c.result.hours, invoice: c.result.invoice,
-    reactive: state.manual[pid]?.reactive || 0, roofBalanceBefore: c.p.roof ? Number(c.roofBalance || 0) : undefined,
+    reactive: state.manual[pid]?.reactive || 0, adjust: state.manual[pid]?.adjust || 0, roofBalanceBefore: c.p.roof ? Number(c.roofBalance || 0) : undefined,
     roofBalanceAfter: roofAfter, closedAt: new Date().toISOString(),
   };
   state.exported = null;

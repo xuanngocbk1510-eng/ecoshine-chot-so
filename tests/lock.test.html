@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><title>Test khóa PIN</title>
+<style>body{font:15px system-ui;margin:20px}.ok{color:#0a7a3d}.bad{color:#b00020;font-weight:700}</style></head>
+<body><h1>Test khóa PIN</h1><pre id="out"></pre>
+<script type="module">
+import * as lock from '../js/lock.js';
+
+const out = document.getElementById('out');
+let fails = 0;
+const eq = (name, got, want) => { const ok = JSON.stringify(got) === JSON.stringify(want); if (!ok) fails++; out.insertAdjacentHTML('beforeend', `<span class="${ok ? 'ok' : 'bad'}">${ok ? 'ĐẠT' : 'SAI'}</span> ${name}${ok ? '' : ` — được ${JSON.stringify(got)}, cần ${JSON.stringify(want)}`}\n`); };
+
+localStorage.removeItem('ecs.lock');
+eq('chưa đặt PIN: được sửa (lần đầu nạp cấu hình)', [lock.hasPin(), lock.canEdit()], [false, true]);
+eq('PIN quá ngắn bị từ chối', lock.validPin('12'), false);
+eq('PIN 6 số hợp lệ', lock.validPin('246810'), true);
+
+await lock.setPin('246810');
+eq('đặt PIN xong: có PIN, đang mở khóa', [lock.hasPin(), lock.canEdit()], [true, true]);
+eq('PIN không lưu dạng chữ thường', localStorage.getItem('ecs.lock').includes('246810'), false);
+
+lock.lockNow();
+eq('khóa lại: không sửa được', lock.canEdit(), false);
+eq('PIN sai không mở', await lock.unlock('000000'), false);
+eq('vẫn khóa sau khi nhập sai', lock.canEdit(), false);
+eq('PIN đúng mở khóa', await lock.unlock('246810'), true);
+eq('đã mở khóa', lock.canEdit(), true);
+
+lock.lockNow();
+let err = '';
+for (let i = 0; i < 5; i++) await lock.unlock('111111');
+try { await lock.unlock('246810'); } catch (e) { err = e.message; }
+eq('sai 5 lần thì bị chặn một lúc, kể cả nhập đúng', /thử lại sau/.test(err), true);
+eq('trong lúc bị chặn vẫn khóa', lock.canEdit(), false);
+
+let threw = false;
+try { lock.clearPin(); } catch { threw = true; }
+eq('không xóa được PIN khi đang khóa', threw, true);
+
+localStorage.removeItem('ecs.lock');
+out.insertAdjacentHTML('afterbegin', `<b class="${fails ? 'bad' : 'ok'}">${fails ? fails + ' ca sai' : 'Tất cả đạt'}</b>\n\n`);
+document.title = fails ? 'FAIL' : 'PASS';
+</script></body></html>

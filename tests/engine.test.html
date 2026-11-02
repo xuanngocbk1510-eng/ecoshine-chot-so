@@ -56,14 +56,24 @@ eq('hai công tơ: kWh cao điểm', r.kwh.peak, 600);
 // 6. Khấu trừ mái tôn (50% tiền tiết kiệm) và phản kháng
 const base = { prices, readings: { a: rd({ normal: 1000, peak: 2000, low: 0 }, { normal: 11000, peak: 7000, low: 0 }) } };
 r = computeProject(P({ roof: { share: 0.5 } }), rates, { ...base, roofBalance: 5000000 });
-eq('mái tôn còn dư lớn: trừ 50% tiết kiệm', r.adjustments.roof, 2000000);
-eq('số giờ sau trừ mái tôn', r.hours, 28.0);
+eq('mái tôn còn dư lớn: thu 50% tiết kiệm', r.adjustments.roof, 2000000);
+eq('số giờ sau cộng mái tôn', r.hours, 36.0);
 r = computeProject(P({ roof: { share: 0.5 } }), rates, { ...base, roofBalance: 1500000 });
 eq('mái tôn còn dư nhỏ: chỉ trừ phần còn lại', r.adjustments.roof, 1500000);
 r = computeProject(P({ roof: { share: 0.5 } }), rates, { ...base, roofBalance: 0 });
 eq('mái tôn hết dư: không trừ', r.adjustments.roof, 0);
 r = computeProject(P({ roof: { share: 0.5 } }), rates, { ...base, roofBalance: 1500000, reactive: 500000 });
-eq('mái tôn + phản kháng', r.hours, roundHalfUp((16000000 - 1500000 - 500000) / 500000, 1));
+eq('mái tôn cộng, phản kháng trừ', r.hours, roundHalfUp((16000000 + 1500000 - 500000) / 500000, 1));
+r = computeProject(P({ roof: { share: 0.5 } }), rates, { ...base, roofBalance: 1500000, reactive: 500000, adjust: 800000 });
+eq('bù trừ kỳ trước dương: cộng thêm', r.hours, roundHalfUp((16000000 + 1500000 + 800000 - 500000) / 500000, 1));
+r = computeProject(P(), rates, { ...base, adjust: -1000000 });
+eq('bù trừ âm: giảm', r.hours, roundHalfUp((16000000 - 1000000) / 500000, 1));
+
+// 6b. Dạng Toàn Cầu: hai công tơ, thấp điểm có số, chỉ số thập phân giữ nguyên
+const TC = { discount: 0.85, integerReadings: false, roof: { share: 0.5 }, meters: [{ id: 'a' }] };
+r = computeProject(TC, rates, { prices, readings: { a: rd({ normal: 100, peak: 0, low: 0 }, { normal: 200.08, peak: 50.32, low: 0 }) } });
+eq('giữ thập phân: kWh bình thường', r.kwh.normal, 100.08);
+eq('giữ thập phân: tiền điện', r.total, 100.08 * 1000 + 50.32 * 2000);
 
 // 7. Cảnh báo
 r = computeProject(P(), rates, { prices, readings: { a: rd({ normal: 500, peak: 0, low: 0 }, { normal: 100, peak: 0, low: 0 }) } });

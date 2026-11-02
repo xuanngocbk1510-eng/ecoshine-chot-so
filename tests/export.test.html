@@ -16,9 +16,22 @@ const cfg = {
       contract: { no: '01/HĐ', date: '01 tháng 01 năm 2026' }, place: 'Công ty B',
       invoice: { label: 'DA1', companyName: 'Công Ty B', contractText: '01/HĐ', email: 'b@example.com' },
     },
+  }, {
+    id: 'p2', name: 'Dự án 2', discount: 0.85, roof: { share: 0.5 }, adjust: { label: 'Bù trừ kỳ trước' }, reactive: true,
+    meters: [{ id: 'm1', label: 'Công tơ 1', reg: '1.8' }, { id: 'm2', label: 'Công tơ 2', reg: '1.8' }],
+    billing: {
+      partyA: { name: 'CÔNG TY C', display: 'Công Ty C', short: 'Công ty C', rep: '', title: 'Giám đốc' },
+      contract: { no: '02/HĐ', date: '02 tháng 02 năm 2026' }, place: 'Công ty C',
+      invoice: { label: 'DA2', companyName: 'Công Ty C', contractText: '02/HĐ', email: 'c@example.com' },
+    },
   }],
 };
+const z0 = { normal: 0, peak: 0, low: 0 };
 const history = { '2026-02': { p1: { hours: 32, readings: { m1: { start: { normal: 0, peak: 0, low: 0 }, end: { normal: 10000, peak: 5000, low: 0 } } }, prices: { normal: 1000, peak: 2000, low: 500 }, reactive: 0 } } };
+history['2026-02'].p2 = {
+  hours: 52.3, prices: { normal: 1000, peak: 2000, low: 500 }, reactive: 300000, adjust: 500000, roofBalanceBefore: 100000000, roofBalanceAfter: 97896250,
+  readings: { m1: { start: z0, end: { normal: 10000, peak: 4000, low: 100 } }, m2: { start: z0, end: { normal: 6000, peak: 2000, low: 0 } } },
+};
 const out = document.getElementById('out');
 let fails = 0;
 const eq = (name, got, want) => { const ok = JSON.stringify(got) === JSON.stringify(want); if (!ok) fails++; out.insertAdjacentHTML('beforeend', `<span class="${ok ? 'ok' : 'bad'}">${ok ? 'ĐẠT' : 'SAI'}</span> ${name}${ok ? '' : ` — được ${JSON.stringify(got)}, cần ${JSON.stringify(want)}`}\n`); };
@@ -26,7 +39,7 @@ const eq = (name, got, want) => { const ok = JSON.stringify(got) === JSON.string
 const ExcelJS = await loadExcelJS();
 const period = { year: 2026, month: 2 };
 const r = await buildAll(cfg, period, history, { bankAccount: '123' });
-eq('tạo 3 file', r.files.map((f) => f.kind), ['client', 'internal', 'summary']);
+eq('tạo đủ file cho 2 dự án', r.files.map((f) => f.kind), ['client', 'internal', 'client', 'internal', 'summary']);
 eq('không có lỗi soát', r.issues, []);
 eq('tên file khách', r.files[0].name, 'T02.26 DA1 (Thanh Toán).xlsx');
 
@@ -42,6 +55,22 @@ eq('thiếu số tài khoản thì có ghi chú', (await buildAll(cfg, period, h
 const wbi = new ExcelJS.Workbook();
 await wbi.xlsx.load(r.files[1].data);
 eq('file nội bộ có kWh', JSON.stringify(wbi.getWorksheet('Thanh toán').getCell('D17').value.result), '10000');
+
+// Dự án 2: hai công tơ, mái tôn cộng, bù trừ, phản kháng trừ
+const wb2 = new ExcelJS.Workbook();
+await wb2.xlsx.load(r.files[3].data);
+const tt = wb2.getWorksheet('Thanh toán');
+eq('hai công tơ: kWh bình thường cộng lại', tt.getCell('D17').value.result, 16000);
+eq('hai công tơ: có khối Tổng cộng ở Chốt số', wb2.getWorksheet('Chốt số').getCell('C22').value, 'Tổng cộng');
+eq('có bảng theo dõi mái tôn', !!wb2.getWorksheet('Theo dõi mái tôn'), true);
+eq('thu hồi mái tôn = 50% tiết kiệm', wb2.getWorksheet('Theo dõi mái tôn').getCell('B6').value.result, 2103750);
+eq('số dư mái tôn cuối kỳ', wb2.getWorksheet('Theo dõi mái tôn').getCell('B7').value.result, 97896250);
+let hoursCell;
+tt.eachRow((row) => row.eachCell((c) => { if (c.value?.formula && /\/1\.08\//.test(c.value.formula)) hoursCell = c.value.result; }));
+eq('số giờ chưa làm tròn trong file nội bộ', Math.round(hoursCell * 10000) / 10000, 52.2925);
+const wbc2 = new ExcelJS.Workbook();
+await wbc2.xlsx.load(r.files[2].data);
+eq('file khách dự án 2 có 52,3 giờ', wbc2.getWorksheet('BB Chốt số giờ sử dụng').getCell('E16').value, 52.3);
 
 // Bộ soát phải bắt được từ cấm
 const bad = new ExcelJS.Workbook();

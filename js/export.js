@@ -1,7 +1,7 @@
 // Xuất bộ file chốt tháng: file gửi khách (chỉ số giờ), file nội bộ (có kWh), file số liệu xuất hóa đơn.
 // Dựng thẳng bằng ExcelJS theo đúng bố cục các file tháng trước; mọi tên, hợp đồng, người ký lấy từ cấu hình riêng.
 
-import { SLOTS, SLOT_LABEL, computeProject, lastDayOfMonth, meterUsage } from './engine.js';
+import { SLOTS, SLOT_LABEL, computeProject, lastDayOfMonth } from './engine.js';
 
 const FONT = 'Times New Roman';
 const THIN = { style: 'thin' };
@@ -160,14 +160,15 @@ export function buildClientWorkbook(ExcelJS, cfg, project, period, hours, settin
 
 // ---------- File nội bộ: biên bản chỉ số + bảng tính tiền (có kWh) ----------
 
-export function buildInternalWorkbook(ExcelJS, cfg, project, period, record) {
+export function buildInternalWorkbook(ExcelJS, cfg, project, period, record, history = {}) {
   const { b, co } = parties(cfg, project);
   const wb = new ExcelJS.Workbook();
   wb.calcProperties.fullCalcOnLoad = true;
   const { year, month } = period;
   const integer = project.integerReadings !== false;
-  const input = { readings: record.readings, prices: record.prices, roofBalance: record.roofBalanceBefore, reactive: record.reactive };
+  const input = { readings: record.readings, prices: record.prices, roofBalance: record.roofBalanceBefore, reactive: record.reactive, adjust: record.adjust };
   const res = computeProject(project, cfg.company, input);
+  const TRACK = 'Theo dõi mái tôn';
 
   // --- Sheet "Chốt số" ---
   let ws = baseSheet(wb, 'Chốt số', { cols: [2, 6, 22, 28, 15, 15, 20, 12], printArea: undefined });
@@ -201,7 +202,7 @@ export function buildInternalWorkbook(ExcelJS, cfg, project, period, record) {
         merge(ws, `B${row}:B${row + 2}`, mi + 1, { h: 'center', border: true });
         merge(ws, `C${row}:C${row + 2}`, m.label || m.id, { h: 'center', wrap: true, border: true });
       }
-      const code = ['2.8.1', '2.8.2', '2.8.3'][si];
+      const code = `${m.reg || '2.8'}.${si + 1}`;
       put(ws, `D${row}`, `${SLOT_LABEL[s]} (${code})`, { border: true });
       put(ws, `E${row}`, fix(rd.start[s]), { h: 'right', fmt: '#,##0', border: true });
       put(ws, `F${row}`, fix(rd.end[s]), { h: 'right', fmt: '#,##0', border: true });
@@ -211,6 +212,26 @@ export function buildInternalWorkbook(ExcelJS, cfg, project, period, record) {
     });
     r += 3;
   });
+  // Nhiều công tơ: thêm khối "Tổng cộng" theo từng khung giờ; bảng thanh toán lấy từ khối này.
+  const kwhRef = {};
+  if (project.meters.length > 1) {
+    SLOTS.forEach((s, si) => {
+      const row = r + si;
+      if (si === 0) {
+        merge(ws, `B${row}:B${row + 2}`, project.meters.length + 1, { h: 'center', border: true });
+        merge(ws, `C${row}:C${row + 2}`, 'Tổng cộng', { h: 'center', wrap: true, border: true });
+      }
+      put(ws, `D${row}`, `${SLOT_LABEL[s]} (${project.meters[0].reg || '2.8'}.${si + 1})`, { border: true });
+      put(ws, `E${row}`, '', { border: true });
+      put(ws, `F${row}`, '', { border: true });
+      put(ws, `G${row}`, { formula: project.meters.map((m) => kwhCell[`${m.id}|${s}`].replace("'Chốt số'!", '')).join('+'), result: res.kwh[s] }, { h: 'right', fmt: '#,##0', border: true });
+      put(ws, `H${row}`, '', { border: true });
+      kwhRef[s] = `'Chốt số'!G${row}`;
+    });
+    r += 3;
+  } else {
+    SLOTS.forEach((s) => { kwhRef[s] = kwhCell[`${project.meters[0].id}|${s}`]; });
+  }
   merge(ws, `B${r + 1}:H${r + 1}`, '-Biên bản được lập từ ngày ký, kết quả dùng để tính toán thanh toán tiền thuê hệ thống điện mặt trời tháng.', { h: 'left', wrap: true });
   merge(ws, `B${r + 2}:H${r + 2}`, '-Biên bản được lập thành 02 bản có giá trị pháp lý như nhau, mỗi bên giữ 01 bản', { h: 'left', wrap: true });
   merge(ws, `B${r + 4}:E${r + 4}`, b.partyA.name, { bold: true, h: 'center' });
@@ -236,20 +257,19 @@ export function buildInternalWorkbook(ExcelJS, cfg, project, period, record) {
   ['(1)', '(2)', '(3)', '(4)', '(5)', '(6)=(4)*(5)', `(7)=(6)*${pct}%`, `(8)=(6)*${100 - pct}%`].forEach((t, i) => put(ws, `${'ABCDEFGH'[i]}16`, t, { italic: true, h: 'center', border: true }));
   let row = 17;
   const first = row;
-  project.meters.forEach((m, mi) => {
-    SLOTS.forEach((s) => {
-      const u = meterUsage(record.readings[m.id], integer)[s];
-      const money = u * (record.prices[s] || 0);
-      put(ws, `A${row}`, s === 'normal' ? mi + 1 : '', { h: 'center', border: true });
-      put(ws, `B${row}`, s === 'normal' ? (m.label || m.id) : '', { border: true });
-      put(ws, `C${row}`, SLOT_LABEL[s], { border: true });
-      put(ws, `D${row}`, { formula: kwhCell[`${m.id}|${s}`], result: u }, { h: 'right', fmt: '#,##0', border: true });
-      put(ws, `E${row}`, record.prices[s] || 0, { h: 'right', fmt: '#,##0', border: true });
-      put(ws, `F${row}`, { formula: `D${row}*E${row}`, result: money }, { h: 'right', fmt: '#,##0', border: true });
-      put(ws, `G${row}`, { formula: `F${row}*${project.discount}`, result: money * project.discount }, { h: 'right', fmt: '#,##0', border: true });
-      put(ws, `H${row}`, { formula: `F${row}-G${row}`, result: money - money * project.discount }, { h: 'right', fmt: '#,##0', border: true });
-      row += 1;
-    });
+  // Mỗi khung giờ một dòng; nhiều công tơ thì kWh là tổng các công tơ (như file các tháng trước).
+  SLOTS.forEach((s) => {
+    const u = res.kwh[s];
+    const money = u * (record.prices[s] || 0);
+    put(ws, `A${row}`, s === 'normal' ? 1 : '', { h: 'center', border: true });
+    put(ws, `B${row}`, s === 'normal' ? (project.meters.length > 1 ? 'Công tơ' : (project.meters[0].label || project.meters[0].id)) : '', { border: true });
+    put(ws, `C${row}`, SLOT_LABEL[s], { border: true });
+    put(ws, `D${row}`, { formula: kwhRef[s], result: u }, { h: 'right', fmt: '#,##0', border: true });
+    put(ws, `E${row}`, record.prices[s] || 0, { h: 'right', fmt: '#,##0', border: true });
+    put(ws, `F${row}`, { formula: `D${row}*E${row}`, result: money }, { h: 'right', fmt: '#,##0', border: true });
+    put(ws, `G${row}`, { formula: `F${row}*${project.discount}`, result: money * project.discount }, { h: 'right', fmt: '#,##0', border: true });
+    put(ws, `H${row}`, { formula: `F${row}-G${row}`, result: money - money * project.discount }, { h: 'right', fmt: '#,##0', border: true });
+    row += 1;
   });
   const last = row - 1;
   const line = (label, f, result, o = {}) => {
@@ -263,17 +283,20 @@ export function buildInternalWorkbook(ExcelJS, cfg, project, period, record) {
   };
   const rTotal = line('TỔNG', { F: `SUM(F${first}:F${last})`, G: `SUM(G${first}:G${last})`, H: `SUM(H${first}:H${last})` }, { F: res.total, G: res.use, H: res.saving });
   let rBase = rTotal;
-  if (project.roof || project.reactive) {
+  if (project.roof || project.adjust || project.reactive) {
+    // Mái tôn cộng (thu hồi chi phí đã ứng), bù trừ có dấu, phản kháng trừ.
+    const sharePct = Math.round((project.roof?.share ?? 0.5) * 100);
     const parts = [];
-    if (project.roof) parts.push(['Khấu trừ sửa mái tôn', res.adjustments.roof]);
-    if (project.reactive) parts.push(['Khấu trừ phản kháng', res.adjustments.reactive]);
-    for (const [label, amount] of parts) {
-      merge(ws, `A${row}:E${row}`, label, { h: 'center', border: true });
+    if (project.roof) parts.push([`CHI PHÍ KHẤU TRỪ SỬA MÁI TÔN (= (8)*${sharePct}%)`, res.adjustments.roof, `'${TRACK}'!B6`]);
+    if (project.adjust) parts.push([String(project.adjust.label || 'Bù trừ kỳ trước').toUpperCase(), res.adjustments.adjust, null]);
+    if (project.reactive) parts.push(['CHI PHÍ HỖ TRỢ PHẠT CÔNG SUẤT PHẢN KHÁNG (EVN)', -res.adjustments.reactive, null]);
+    for (const [label, amount, formula] of parts) {
+      merge(ws, `A${row}:E${row}`, label, { h: 'center', wrap: true, border: true });
       ['F', 'H'].forEach((c) => put(ws, `${c}${row}`, '', { border: true }));
-      put(ws, `G${row}`, -amount, { h: 'right', fmt: '#,##0', border: true });
+      put(ws, `G${row}`, formula ? { formula, result: amount } : amount, { h: 'right', fmt: '#,##0', border: true });
       row += 1;
     }
-    merge(ws, `A${row}:E${row}`, 'TIỀN SỬ DỤNG SAU KHẤU TRỪ', { bold: true, h: 'center', border: true });
+    merge(ws, `A${row}:E${row}`, project.roof ? 'TỔNG SỐ TIỀN BÊN A THANH TOÁN VÀ CHI PHÍ KHẤU TRỪ SỬA MÁI TÔN' : 'TIỀN SỬ DỤNG SAU ĐIỀU CHỈNH', { bold: true, h: 'center', wrap: true, border: true });
     ['F', 'H'].forEach((c) => put(ws, `${c}${row}`, '', { border: true }));
     put(ws, `G${row}`, { formula: `G${rTotal}+SUM(G${rTotal + 1}:G${row - 1})`, result: res.base }, { bold: true, h: 'right', fmt: '#,##0', border: true });
     rBase = row;
@@ -299,7 +322,38 @@ export function buildInternalWorkbook(ExcelJS, cfg, project, period, record) {
   row += 2;
   merge(ws, `A${row}:D${row}`, b.partyA.name, { bold: true, h: 'center' });
   merge(ws, `E${row}:I${row}`, co.name, { bold: true, h: 'center' });
+
+  if (project.roof) addRoofSheet(wb, TRACK, project, period, record, res, rTotal, history);
   return { wb, result: res };
+}
+
+// Bảng theo dõi thu hồi chi phí mái tôn (nội bộ): số dư đầu kỳ do anh nhập, các tháng sau tự trừ lùi.
+function addRoofSheet(wb, name, project, period, record, res, rTotal, history) {
+  const ws = baseSheet(wb, name, { cols: [46, 22, 22, 22] });
+  const share = project.roof.share ?? 0.5;
+  const before = Number(record.roofBalanceBefore) || 0;
+  merge(ws, 'A1:D1', 'BẢNG THEO DÕI KHẤU TRỪ CHI PHÍ SỬA MÁI TÔN (NỘI BỘ)', { bold: true, size: 14, h: 'center' });
+  const line = (r, label, v, o = {}) => {
+    put(ws, `A${r}`, label, { border: true, wrap: true });
+    put(ws, `B${r}`, v, { border: true, h: 'right', fmt: o.fmt || '#,##0', bold: !!o.bold });
+  };
+  line(3, 'Tỷ lệ khấu trừ trên tiền tiết kiệm', share, { fmt: '0%' });
+  line(4, 'Tiền tiết kiệm của tháng (VNĐ)', { formula: `'Thanh toán'!H${rTotal}`, result: res.saving });
+  line(5, 'Số dư còn phải thu hồi đầu kỳ (VNĐ)', before);
+  line(6, 'Thu hồi trong tháng (VNĐ)', { formula: 'MIN(B4*B3,B5)', result: res.adjustments.roof });
+  line(7, 'Số dư còn phải thu hồi cuối kỳ (VNĐ)', { formula: 'B5-B6', result: before - res.adjustments.roof }, { bold: true });
+  ['Tháng', 'Đầu kỳ (VNĐ)', 'Thu hồi (VNĐ)', 'Cuối kỳ (VNĐ)'].forEach((t, i) => put(ws, `${'ABCD'[i]}9`, t, { bold: true, h: 'center', border: true }));
+  let r = 10;
+  const key = `${period.year}-${pad2(period.month)}`;
+  for (const k of Object.keys(history).filter((x) => x <= key).sort()) {
+    const h = history[k]?.[project.id];
+    if (h?.roofBalanceBefore === undefined) continue;
+    put(ws, `A${r}`, `${k.slice(5)}/${k.slice(0, 4)}`, { h: 'center', border: true });
+    put(ws, `B${r}`, h.roofBalanceBefore, { h: 'right', fmt: '#,##0', border: true });
+    put(ws, `C${r}`, h.roofBalanceBefore - h.roofBalanceAfter, { h: 'right', fmt: '#,##0', border: true });
+    put(ws, `D${r}`, h.roofBalanceAfter, { h: 'right', fmt: '#,##0', border: true });
+    r += 1;
+  }
 }
 
 // ---------- File tổng hợp cho kế toán xuất hóa đơn ----------
@@ -417,7 +471,7 @@ export async function buildAll(cfg, period, history, settings) {
     issues.push(...auditWorkbook(client.wb, names.client));
     if (client.missingAccount) notes.push('Chưa nhập số tài khoản nhận tiền ở Cài đặt: Giấy đề nghị đang để dấu chấm, anh điền tay trước khi gửi.');
     files.push({ name: names.client, data: await toBytes(client.wb), kind: 'client' });
-    const internal = buildInternalWorkbook(ExcelJS, cfg, p, period, rec);
+    const internal = buildInternalWorkbook(ExcelJS, cfg, p, period, rec, history);
     if (internal.result.hours !== rec.hours) issues.push(`${p.name}: số giờ tính lại (${internal.result.hours}) khác số đã chốt (${rec.hours})`);
     files.push({ name: names.internal, data: await toBytes(internal.wb), kind: 'internal' });
   }

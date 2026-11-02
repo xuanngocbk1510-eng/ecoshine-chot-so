@@ -53,3 +53,12 @@ details { margin-top: 12px; } summary { cursor: pointer; color: var(--muted); fo
 button:disabled { opacity: .6; cursor: progress; }
 .frow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
 .chip-int { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+input[readonly][data-lock] { background: var(--bg); color: var(--muted); cursor: pointer; }
+.start { text-align: right; font-variant-numeric: tabular-nums; padding-right: 8px; color: var(--muted); }
+.lockbar { font-size: 13px; border-radius: 8px; padding: 6px 9px; margin: 10px 0 0; background: var(--ok-bg); color: var(--ok); }
+.lockbar.warn { background: var(--warn-bg); color: var(--warn); }
+dialog.pin { border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--ink); padding: 18px; width: min(92vw, 340px); }
+dialog.pin::backdrop { background: rgba(0, 0, 0, .45); }
+dialog.pin h3 { margin: 0 0 8px; font-size: 17px; }
+dialog.pin .pinerr { color: var(--bad); font-size: 13px; margin: 6px 0 0; }
+dialog.pin .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }

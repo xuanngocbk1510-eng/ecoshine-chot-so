@@ -4,6 +4,7 @@ import * as store from './store.js';
 import { buildAll } from './export.js';
 import { zipFiles } from './zip.js';
 
+const APP_VERSION = '2026-11-02b';
 const $app = document.getElementById('app');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SLOT_OPTS = [...SLOTS.map((s) => [s, SLOT_LABEL[s]]), ['total', 'Tổng (để kiểm tra)'], ['skip', 'Bỏ qua']];
@@ -341,7 +342,8 @@ function viewSettings(cfg) {
       <details><summary>Sửa trực tiếp (nâng cao)</summary>
         <textarea id="cfgtext" rows="14" spellcheck="false">${esc(JSON.stringify(cfg, null, 2))}</textarea>
         <button data-act="savecfg">Lưu cấu hình</button></details>
-      <p class="muted small">Hiện có ${cfg.projects.length} dự án: ${esc(cfg.projects.map((p) => p.name).join(', ') || 'chưa có')}.</p></section>`;
+      <p class="muted small">Hiện có ${cfg.projects.length} dự án: ${esc(cfg.projects.map((p) => p.name).join(', ') || 'chưa có')}.</p></section>
+    <p class="muted small ver">Phiên bản ${APP_VERSION} · đọc ảnh bằng Gemini</p>`;
 }
 
 function toast(msg) {

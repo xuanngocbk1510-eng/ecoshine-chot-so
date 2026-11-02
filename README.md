@@ -38,6 +38,13 @@ Số tài khoản nhận tiền do anh gõ ở Cài đặt, lưu trong trình du
 Dự án đặt `"invoiceOnly": true` chưa có công tơ trong app: anh gõ số giờ tay ở tab Xuất file để vào file kế toán.
 Bộ test: `tests/export.test.html`.
 
+## Đầu kỳ và khóa quyền sửa
+- Chỉ số **đầu kỳ** không sửa được trong app: lấy từ chỉ số khởi tạo (cuối kỳ file Excel tháng trước, nằm trong cấu hình) hoặc từ tháng đã chốt gần nhất.
+- **Mã PIN** (Cài đặt) khóa việc sửa đơn giá, số dư mái tôn, bù trừ, phản kháng, nạp cấu hình, nạp sao lưu và xóa lịch sử. Mở khóa 10 phút, tự khóa khi rời app. Chỉ lưu dấu băm PBKDF2 trong trình duyệt từng thiết bị. Đây là khóa mềm, không thay cho việc giữ thiết bị an toàn.
+
+## Toàn Cầu 1 và 2
+- Toàn Cầu 1: hai công tơ cộng lại; thu hồi chi phí mái tôn = 50% tiền tiết kiệm (**cộng** vào tiền khách trả, không vượt số dư); bù trừ kỳ trước (số có dấu); phản kháng (trừ). Chưa nhập số dư mái tôn thì app không tính.
+- Toàn Cầu 2: một công tơ, chỉ số giữ phần thập phân.
+
 ## Còn làm tiếp
-- Thêm Toàn Cầu 1 (hai công tơ, mái tôn, phản kháng) và Toàn Cầu 2.
 - Giai đoạn 4: đồng bộ lịch sử giữa điện thoại và máy tính qua kho riêng tư.

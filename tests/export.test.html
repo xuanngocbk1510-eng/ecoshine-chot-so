@@ -10,7 +10,7 @@ import { zipFiles } from '../js/zip.js';
 const cfg = {
   company: { hourPrice: 500000, vat: 0.08, name: 'CÔNG TY A', shortName: 'Công ty A', director: { rep: 'Nguyễn Văn A', title: 'Giám đốc' }, bank: { holder: 'CÔNG TY A', bankName: 'Ngân hàng X' } },
   projects: [{
-    id: 'p1', name: 'Dự án 1', discount: 0.8, meters: [{ id: 'm1', label: 'Công tơ 1' }],
+    id: 'p1', name: 'Dự án 1', discount: 0.8, lowZero: true, meters: [{ id: 'm1', label: 'Công tơ 1' }],
     billing: {
       partyA: { name: 'CÔNG TY B', display: 'Công Ty B', short: 'Công ty B', rep: 'Trần Văn B', title: 'Giám đốc' },
       contract: { no: '01/HĐ', date: '01 tháng 01 năm 2026' }, place: 'Công ty B',
@@ -55,6 +55,10 @@ eq('thiếu số tài khoản thì có ghi chú', (await buildAll(cfg, period, h
 const wbi = new ExcelJS.Workbook();
 await wbi.xlsx.load(r.files[1].data);
 eq('file nội bộ có kWh', JSON.stringify(wbi.getWorksheet('Thanh toán').getCell('D17').value.result), '10000');
+eq('dự án thấp điểm bằng 0: bảng thanh toán chỉ 2 dòng rồi tới TỔNG', wbi.getWorksheet('Thanh toán').getCell('A19').value, 'TỔNG');
+let hasLow = false;
+wbi.eachSheet((s) => s.eachRow((row) => row.eachCell((c) => { if (/thấp điểm/i.test(String(c.value))) hasLow = true; })));
+eq('dự án thấp điểm bằng 0: không in chữ thấp điểm', hasLow, false);
 
 // Dự án 2: hai công tơ, mái tôn cộng, bù trừ, phản kháng trừ
 const wb2 = new ExcelJS.Workbook();

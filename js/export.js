@@ -192,15 +192,18 @@ export function buildInternalWorkbook(ExcelJS, cfg, project, period, record, his
   put(ws, 'E15', 'Đầu kỳ', { bold: true, h: 'center', border: true });
   put(ws, 'F15', 'Cuối kỳ', { bold: true, h: 'center', border: true });
   const fix = (v) => (integer ? Math.round(Number(v) || 0) : Number(v) || 0);
+  // Dự án thấp điểm luôn bằng 0 thì không in dòng thấp điểm.
+  const slots = project.lowZero ? SLOTS.filter((s) => s !== 'low') : SLOTS;
+  const n = slots.length;
   let r = 16;
   const kwhCell = {}; // `${meterId}|${slot}` -> địa chỉ ô kWh ở sheet Chốt số
   project.meters.forEach((m, mi) => {
     const rd = record.readings[m.id];
-    SLOTS.forEach((s, si) => {
+    slots.forEach((s, si) => {
       const row = r + si;
       if (si === 0) {
-        merge(ws, `B${row}:B${row + 2}`, mi + 1, { h: 'center', border: true });
-        merge(ws, `C${row}:C${row + 2}`, m.label || m.id, { h: 'center', wrap: true, border: true });
+        merge(ws, `B${row}:B${row + n - 1}`, mi + 1, { h: 'center', border: true });
+        merge(ws, `C${row}:C${row + n - 1}`, m.label || m.id, { h: 'center', wrap: true, border: true });
       }
       const code = `${m.reg || '2.8'}.${si + 1}`;
       put(ws, `D${row}`, `${SLOT_LABEL[s]} (${code})`, { border: true });
@@ -210,16 +213,16 @@ export function buildInternalWorkbook(ExcelJS, cfg, project, period, record, his
       put(ws, `H${row}`, '', { border: true });
       kwhCell[`${m.id}|${s}`] = `'Chốt số'!G${row}`;
     });
-    r += 3;
+    r += n;
   });
   // Nhiều công tơ: thêm khối "Tổng cộng" theo từng khung giờ; bảng thanh toán lấy từ khối này.
   const kwhRef = {};
   if (project.meters.length > 1) {
-    SLOTS.forEach((s, si) => {
+    slots.forEach((s, si) => {
       const row = r + si;
       if (si === 0) {
-        merge(ws, `B${row}:B${row + 2}`, project.meters.length + 1, { h: 'center', border: true });
-        merge(ws, `C${row}:C${row + 2}`, 'Tổng cộng', { h: 'center', wrap: true, border: true });
+        merge(ws, `B${row}:B${row + n - 1}`, project.meters.length + 1, { h: 'center', border: true });
+        merge(ws, `C${row}:C${row + n - 1}`, 'Tổng cộng', { h: 'center', wrap: true, border: true });
       }
       put(ws, `D${row}`, `${SLOT_LABEL[s]} (${project.meters[0].reg || '2.8'}.${si + 1})`, { border: true });
       put(ws, `E${row}`, '', { border: true });
@@ -228,9 +231,9 @@ export function buildInternalWorkbook(ExcelJS, cfg, project, period, record, his
       put(ws, `H${row}`, '', { border: true });
       kwhRef[s] = `'Chốt số'!G${row}`;
     });
-    r += 3;
+    r += n;
   } else {
-    SLOTS.forEach((s) => { kwhRef[s] = kwhCell[`${project.meters[0].id}|${s}`]; });
+    slots.forEach((s) => { kwhRef[s] = kwhCell[`${project.meters[0].id}|${s}`]; });
   }
   merge(ws, `B${r + 1}:H${r + 1}`, '-Biên bản được lập từ ngày ký, kết quả dùng để tính toán thanh toán tiền thuê hệ thống điện mặt trời tháng.', { h: 'left', wrap: true });
   merge(ws, `B${r + 2}:H${r + 2}`, '-Biên bản được lập thành 02 bản có giá trị pháp lý như nhau, mỗi bên giữ 01 bản', { h: 'left', wrap: true });
@@ -258,7 +261,7 @@ export function buildInternalWorkbook(ExcelJS, cfg, project, period, record, his
   let row = 17;
   const first = row;
   // Mỗi khung giờ một dòng; nhiều công tơ thì kWh là tổng các công tơ (như file các tháng trước).
-  SLOTS.forEach((s) => {
+  slots.forEach((s) => {
     const u = res.kwh[s];
     const money = u * (record.prices[s] || 0);
     put(ws, `A${row}`, s === 'normal' ? 1 : '', { h: 'center', border: true });

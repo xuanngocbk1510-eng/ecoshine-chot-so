@@ -62,3 +62,5 @@ dialog.pin::backdrop { background: rgba(0, 0, 0, .45); }
 dialog.pin h3 { margin: 0 0 8px; font-size: 17px; }
 dialog.pin .pinerr { color: var(--bad); font-size: 13px; margin: 6px 0 0; }
 dialog.pin .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.proj .drop { margin: 0 0 8px; }
+.proj .rows { margin-bottom: 8px; }

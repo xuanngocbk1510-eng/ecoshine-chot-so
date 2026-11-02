@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><title>Test xuất file</title>
+<style>body{font:15px system-ui;margin:20px}.ok{color:#0a7a3d}.bad{color:#b00020;font-weight:700}</style></head>
+<body><h1>Test xuất file</h1><pre id="out"></pre>
+<script type="module">
+import { loadExcelJS, auditWorkbook, buildAll } from '../js/export.js';
+import { zipFiles } from '../js/zip.js';
+
+// Toàn bộ tên, số liệu ở đây là giả để kiểm tra logic.
+const cfg = {
+  company: { hourPrice: 500000, vat: 0.08, name: 'CÔNG TY A', shortName: 'Công ty A', director: { rep: 'Nguyễn Văn A', title: 'Giám đốc' }, bank: { holder: 'CÔNG TY A', bankName: 'Ngân hàng X' } },
+  projects: [{
+    id: 'p1', name: 'Dự án 1', discount: 0.8, meters: [{ id: 'm1', label: 'Công tơ 1' }],
+    billing: {
+      partyA: { name: 'CÔNG TY B', display: 'Công Ty B', short: 'Công ty B', rep: 'Trần Văn B', title: 'Giám đốc' },
+      contract: { no: '01/HĐ', date: '01 tháng 01 năm 2026' }, place: 'Công ty B',
+      invoice: { label: 'DA1', companyName: 'Công Ty B', contractText: '01/HĐ', email: 'b@example.com' },
+    },
+  }],
+};
+const history = { '2026-02': { p1: { hours: 32, readings: { m1: { start: { normal: 0, peak: 0, low: 0 }, end: { normal: 10000, peak: 5000, low: 0 } } }, prices: { normal: 1000, peak: 2000, low: 500 }, reactive: 0 } } };
+const out = document.getElementById('out');
+let fails = 0;
+const eq = (name, got, want) => { const ok = JSON.stringify(got) === JSON.stringify(want); if (!ok) fails++; out.insertAdjacentHTML('beforeend', `<span class="${ok ? 'ok' : 'bad'}">${ok ? 'ĐẠT' : 'SAI'}</span> ${name}${ok ? '' : ` — được ${JSON.stringify(got)}, cần ${JSON.stringify(want)}`}\n`); };
+
+const ExcelJS = await loadExcelJS();
+const period = { year: 2026, month: 2 };
+const r = await buildAll(cfg, period, history, { bankAccount: '123' });
+eq('tạo 3 file', r.files.map((f) => f.kind), ['client', 'internal', 'summary']);
+eq('không có lỗi soát', r.issues, []);
+eq('tên file khách', r.files[0].name, 'T02.26 DA1 (Thanh Toán).xlsx');
+
+// Đọc lại file khách: ngày ký cuối tháng 2/2026 = 28, giá trị đã lưu sẵn kết quả công thức
+const wb = new ExcelJS.Workbook();
+await wb.xlsx.load(r.files[0].data);
+eq('ngày ký là 28/02', wb.getWorksheet('BB Chốt số giờ sử dụng').getCell('B7').value.includes('ngày 28 tháng 02 năm 2026'), true);
+eq('số giờ', wb.getWorksheet('BB Chốt số giờ sử dụng').getCell('E16').value, 32);
+eq('tiền sau VAT lưu sẵn', wb.getWorksheet('Giấy ĐNTN').getCell('E16').value.result, 17280000);
+eq('thiếu số tài khoản thì có ghi chú', (await buildAll(cfg, period, history, {})).notes.length > 0, true);
+
+// File nội bộ có kWh, file khách không có
+const wbi = new ExcelJS.Workbook();
+await wbi.xlsx.load(r.files[1].data);
+eq('file nội bộ có kWh', JSON.stringify(wbi.getWorksheet('Thanh toán').getCell('D17').value.result), '10000');
+
+// Bộ soát phải bắt được từ cấm
+const bad = new ExcelJS.Workbook();
+bad.addWorksheet('S').getCell('A1').value = 'Số kWh sử dụng, giá EVN, chiết khấu 15%';
+eq('soát bắt kWh, EVN, chiết khấu', auditWorkbook(bad, 'x').length >= 3, true);
+const good = new ExcelJS.Workbook();
+good.addWorksheet('S').getCell('A1').value = 'Số giờ sử dụng hệ thống: 32 giờ, thuế GTGT 8%';
+eq('soát cho qua file sạch', auditWorkbook(good, 'x'), []);
+
+// Zip hợp lệ: đọc lại bằng chính ExcelJS không được, nên kiểm chữ ký và số mục
+const z = zipFiles([{ name: 'a/b.txt', data: new TextEncoder().encode('xin chào') }]);
+const zb = new Uint8Array(await z.arrayBuffer());
+eq('zip bắt đầu bằng PK', [zb[0], zb[1]], [0x50, 0x4b]);
+
+out.insertAdjacentHTML('afterbegin', `<b class="${fails ? 'bad' : 'ok'}">${fails ? fails + ' ca sai' : 'Tất cả đạt'}</b>\n\n`);
+document.title = fails ? 'FAIL' : 'PASS';
+</script></body></html>

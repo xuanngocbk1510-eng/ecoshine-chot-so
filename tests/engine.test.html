@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><title>Test bộ tính</title>
+<style>body{font:15px system-ui;margin:20px}.ok{color:#0a7a3d}.bad{color:#b00020;font-weight:700}</style></head>
+<body><h1>Test bộ tính</h1><pre id="out"></pre>
+<script type="module">
+import { computeProject, roundHalfUp, checkTotal, lastDayOfMonth } from '../js/engine.js';
+
+// Toàn bộ số ở đây là số giả để kiểm tra logic, không phải số thật của khách.
+const rates = { hourPrice: 500000, vat: 0.08 };
+const prices = { normal: 1000, peak: 2000, low: 500 };
+const P = (extra = {}) => ({ discount: 0.8, meters: [{ id: 'a' }], ...extra });
+const rd = (s, e) => ({ start: s, end: e });
+const out = document.getElementById('out');
+let fails = 0;
+function eq(name, got, want) {
+  const ok = typeof want === 'number' ? Math.abs(got - want) < 1e-6 : got === want;
+  if (!ok) fails++;
+  out.insertAdjacentHTML('beforeend', `<span class="${ok ? 'ok' : 'bad'}">${ok ? 'ĐẠT' : 'SAI'}</span> ${name}${ok ? '' : ` — được ${got}, cần ${want}`}\n`);
+}
+
+// 1. Ca cơ bản: 10.000 kWh bình thường, 5.000 cao điểm
+let r = computeProject(P(), rates, { prices, readings: { a: rd({ normal: 1000, peak: 2000, low: 0 }, { normal: 11000, peak: 7000, low: 0 }) } });
+eq('kWh bình thường', r.kwh.normal, 10000);
+eq('tiền điện nội bộ', r.total, 20000000);
+eq('sau chiết khấu', r.use, 16000000);
+eq('tiền tiết kiệm', r.saving, 4000000);
+eq('số giờ', r.hours, 32.0);
+eq('hóa đơn trước VAT', r.invoice.before, 16000000);
+eq('hóa đơn sau VAT', r.invoice.after, 17280000);
+
+// 2. Làm tròn 1 chữ số: 0,5 trở lên thì lên
+eq('roundHalfUp 32.05 -> 32.1', roundHalfUp(32.05, 1), 32.1);
+eq('roundHalfUp 223.1599 -> 223.2', roundHalfUp(223.1599, 1), 223.2);
+eq('roundHalfUp 240.01 -> 240.0', roundHalfUp(240.01, 1), 240.0);
+eq('roundHalfUp 2.675 -> 2.68', roundHalfUp(2.675, 2), 2.68);
+
+// 3. Số giờ lẻ
+r = computeProject(P(), rates, { prices, readings: { a: rd({ normal: 0, peak: 0, low: 0 }, { normal: 12345, peak: 6789, low: 0 }) } });
+eq('tiền điện lẻ', r.total, 12345 * 1000 + 6789 * 2000);
+eq('số giờ lẻ làm tròn', r.hours, roundHalfUp(((12345 * 1000 + 6789 * 2000) * 0.8) / 500000, 1));
+eq('hóa đơn = giờ x 500.000', r.invoice.before, r.hours * 500000);
+eq('hóa đơn sau VAT = trước x 1,08', r.invoice.after, Math.round(r.hours * 500000 * 1.08));
+
+// 4. Chỉ số thập phân được làm tròn về số nguyên khi tính
+r = computeProject(P(), rates, { prices, readings: { a: rd({ normal: 100.4, peak: 0, low: 0 }, { normal: 200.6, peak: 0, low: 0 }) } });
+eq('đầu kỳ 100,4 -> 100; cuối kỳ 200,6 -> 201', r.kwh.normal, 101);
+
+// 5. Hai công tơ cộng lại
+const P2 = P({ meters: [{ id: 'a' }, { id: 'b' }] });
+r = computeProject(P2, rates, { prices, readings: {
+  a: rd({ normal: 0, peak: 0, low: 0 }, { normal: 1000, peak: 500, low: 0 }),
+  b: rd({ normal: 50, peak: 50, low: 0 }, { normal: 250, peak: 150, low: 0 }) } });
+eq('hai công tơ: kWh bình thường', r.kwh.normal, 1200);
+eq('hai công tơ: kWh cao điểm', r.kwh.peak, 600);
+
+// 6. Khấu trừ mái tôn (50% tiền tiết kiệm) và phản kháng
+const base = { prices, readings: { a: rd({ normal: 1000, peak: 2000, low: 0 }, { normal: 11000, peak: 7000, low: 0 }) } };
+r = computeProject(P({ roof: { share: 0.5 } }), rates, { ...base, roofBalance: 5000000 });
+eq('mái tôn còn dư lớn: trừ 50% tiết kiệm', r.adjustments.roof, 2000000);
+eq('số giờ sau trừ mái tôn', r.hours, 28.0);
+r = computeProject(P({ roof: { share: 0.5 } }), rates, { ...base, roofBalance: 1500000 });
+eq('mái tôn còn dư nhỏ: chỉ trừ phần còn lại', r.adjustments.roof, 1500000);
+r = computeProject(P({ roof: { share: 0.5 } }), rates, { ...base, roofBalance: 0 });
+eq('mái tôn hết dư: không trừ', r.adjustments.roof, 0);
+r = computeProject(P({ roof: { share: 0.5 } }), rates, { ...base, roofBalance: 1500000, reactive: 500000 });
+eq('mái tôn + phản kháng', r.hours, roundHalfUp((16000000 - 1500000 - 500000) / 500000, 1));
+
+// 7. Cảnh báo
+r = computeProject(P(), rates, { prices, readings: { a: rd({ normal: 500, peak: 0, low: 0 }, { normal: 100, peak: 0, low: 0 }) } });
+eq('cuối kỳ nhỏ hơn đầu kỳ: có cảnh báo', r.warnings.length > 0, true);
+r = computeProject(P(), rates, { prices, readings: {} });
+eq('thiếu chỉ số: có cảnh báo', r.warnings.some((w) => w.includes('Thiếu')), true);
+
+// 8. Kiểm tra tổng ba khung
+eq('tổng khớp (sai số làm tròn)', checkTotal({ normal: 6000, peak: 2000, low: 0 }, 8000.4).ok, true);
+eq('tổng lệch do đọc nhầm', checkTotal({ normal: 6000, peak: 2000, low: 0 }, 8100.4).ok, false);
+
+// 9. Ngày cuối tháng
+eq('cuối tháng 10 = 31', lastDayOfMonth(2026, 10), 31);
+eq('cuối tháng 11 = 30', lastDayOfMonth(2026, 11), 30);
+eq('cuối tháng 2/2028 = 29', lastDayOfMonth(2028, 2), 29);
+eq('cuối tháng 2/2027 = 28', lastDayOfMonth(2027, 2), 28);
+
+out.insertAdjacentHTML('afterbegin', `<b class="${fails ? 'bad' : 'ok'}">${fails ? fails + ' ca sai' : 'Tất cả đạt'}</b>\n\n`);
+document.title = fails ? 'FAIL' : 'PASS';
+</script></body></html>

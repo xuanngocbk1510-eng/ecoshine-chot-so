@@ -74,4 +74,4 @@ dialog.pin .row { display: flex; gap: 8px; justify-content: flex-end; margin-top
 .top h1 { text-shadow: 0 1px 2px rgba(0, 0, 0, .35); }
 .projhead { display: flex; align-items: center; gap: 12px; margin: 0 0 10px; } .projhead h2 { margin: 0; }
 .pthumb { width: 104px; height: 52px; flex: none; object-fit: cover; border-radius: 8px; background: var(--bg); }
-
+.empty { text-align: center; } .empty img { width: 160px; max-width: 60%; height: auto; display: block; margin: 4px auto 8px; }

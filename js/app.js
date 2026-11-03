@@ -6,7 +6,7 @@ import { zipFiles } from './zip.js';
 import * as lock from './lock.js';
 import { extractCss, checkCss, applyCss, buildBrief } from './theme.js';
 
-const APP_VERSION = '2026-11-03d';
+const APP_VERSION = '2026-11-03e';
 const $app = document.getElementById('app');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SVG = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -157,7 +157,7 @@ function render() {
   const cfg = store.config.get();
   const tabs = [['chot', 'Chốt tháng'], ['xuat', 'Xuất file'], ['lichsu', 'Lịch sử'], ['caidat', 'Cài đặt']];
   $app.innerHTML = `
-    <header class="top"><img class="logo" src="icons/logo-ecoshine.svg" alt=""><h1>Ecoshine · Chốt số</h1></header>
+    <header class="top"><img class="logo" src="icons/logo-ecoshine.png" alt=""><h1>Ecoshine · Chốt số</h1></header>
     <main>${state.tab === 'chot' ? viewChot(cfg) : state.tab === 'xuat' ? viewExport(cfg) : state.tab === 'lichsu' ? viewHistory(cfg) : viewSettings(cfg)}</main>
     <nav class="tabs">${tabs.map(([id, label]) => `<button data-act="tab" data-tab="${id}" class="${state.tab === id ? 'on' : ''}">${TAB_ICON[id]}<span>${label}</span></button>`).join('')}</nav>
     <div id="toast" class="toast" hidden></div>`;
@@ -166,7 +166,7 @@ function render() {
 
 function viewChot(cfg) {
   if (!workProjects(cfg).length) {
-    return `<section class="card"><h2>Chưa có dự án</h2><p>Vào <b>Cài đặt</b> để nhập cấu hình (file .json anh đã có) và khóa API.</p></section>`;
+    return `<section class="card empty"><img src="icons/trang-thai-trong.webp" alt=""><h2>Chưa có dự án</h2><p>Vào <b>Cài đặt</b> để nhập cấu hình (file .json anh đã có) và khóa API.</p></section>`;
   }
   // Mỗi công tơ một ổ nhập riêng: ảnh thả vào ổ nào chỉ tính cho công tơ đó, không lẫn sang công tơ hay dự án khác.
   return `
@@ -305,7 +305,7 @@ function viewHistory(cfg) {
   const list = keys.length ? keys.map((k) => `
     <div class="hrow"><b>T${esc(k)}</b>
       ${Object.entries(hist[k]).map(([pid, v]) => `<span class="chip">${esc(cfg.projects.find((p) => p.id === pid)?.name || pid)}: ${fmt.n1(v.hours)} giờ${v.manual ? ' (nhập tay)' : ''}</span>`).join('')}
-      <button class="x" data-act="histdel" data-k="${esc(k)}" aria-label="Xóa">×</button></div>`).join('') : '<p class="muted">Chưa chốt tháng nào trong app này.</p>';
+      <button class="x" data-act="histdel" data-k="${esc(k)}" aria-label="Xóa">×</button></div>`).join('') : '<div class="empty"><img src="icons/trang-thai-trong.webp" alt=""><p class="muted">Chưa chốt tháng nào trong app này.</p></div>';
   return `<section class="card"><h2>Các tháng đã chốt</h2>${list}</section>
     <section class="card"><h2>Sao lưu</h2>
       <button data-act="export">Tải bản sao lưu (.json)</button>

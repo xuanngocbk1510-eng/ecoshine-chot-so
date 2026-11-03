@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><title>Test giao diện</title>
+<style>body{font:15px system-ui;margin:20px}.ok{color:#0a7a3d}.bad{color:#b00020;font-weight:700}</style></head>
+<body><h1>Test giao diện tùy chỉnh</h1><pre id="out"></pre>
+<script type="module">
+import { extractCss, checkCss, applyCss, buildBrief } from '../js/theme.js';
+import { checkTotal } from '../js/engine.js';
+
+const out = document.getElementById('out');
+let fails = 0;
+const eq = (name, got, want) => { const ok = JSON.stringify(got) === JSON.stringify(want); if (!ok) fails++; out.insertAdjacentHTML('beforeend', `<span class="${ok ? 'ok' : 'bad'}">${ok ? 'ĐẠT' : 'SAI'}</span> ${name}${ok ? '' : ` — được ${JSON.stringify(got)}, cần ${JSON.stringify(want)}`}\n`); };
+
+eq('lấy CSS từ khối ```css', extractCss('Phong cách xanh.\n```css\n.card { color: red; }\n```\nHết.'), '.card { color: red; }');
+eq('lấy khối dài nhất', extractCss('```css\na{}\n```\n```css\n.card { color: red; }\n.top { color: blue; }\n```'), '.card { color: red; }\n.top { color: blue; }');
+eq('lấy CSS trong thẻ style', extractCss('```html\n<html><style>.a { top: 0; }</style><body></body></html>\n```'), '.a { top: 0; }');
+eq('CSS thuần giữ nguyên', extractCss('  .a { top: 0; }  '), '.a { top: 0; }');
+
+eq('CSS hợp lệ', checkCss('.a { top: 0; }'), '');
+eq('rỗng bị chặn', checkCss('') !== '', true);
+eq('không phải CSS bị chặn', checkCss('xin chào') !== '', true);
+eq('còn thẻ HTML bị chặn', checkCss('<div>.a { top: 0; }</div>') !== '', true);
+eq('CSS bị cắt dở bị chặn', checkCss('.a { top: 0; } .b { color: red;') !== '', true);
+
+applyCss('body { margin: 7px; }');
+eq('nạp CSS vào trang', document.getElementById('ecs-theme').textContent, 'body { margin: 7px; }');
+eq('CSS đè lên được', getComputedStyle(document.body).marginTop, '7px');
+applyCss('');
+eq('xóa CSS tùy chỉnh', document.getElementById('ecs-theme'), null);
+
+const brief = buildBrief({ css: '.x { a: b; }', sample: '<div id="app"></div>', cssUrl: 'https://e.example/css/style.css' });
+eq('gói gửi Gemini có CSS gốc', brief.includes('.x { a: b; }'), true);
+eq('gói gửi Gemini có HTML mẫu', brief.includes('<div id="app"></div>'), true);
+eq('gói gửi Gemini không có khóa API', /AIza/.test(brief), false);
+
+// Dự án bỏ thấp điểm: tổng công tơ lớn hơn ba khung là bình thường (có số thấp điểm thật), chỉ báo khi ba khung vượt tổng.
+eq('maxOnly: tổng lớn hơn thì đạt', checkTotal({ normal: 6000, peak: 2000, low: 0 }, 8040, 1.01, true).ok, true);
+eq('maxOnly: ba khung vượt tổng thì sai', checkTotal({ normal: 6000, peak: 2100, low: 0 }, 8000, 1.01, true).ok, false);
+eq('không maxOnly: tổng lớn hơn thì sai', checkTotal({ normal: 6000, peak: 2000, low: 0 }, 8040).ok, false);
+
+out.insertAdjacentHTML('afterbegin', `<b class="${fails ? 'bad' : 'ok'}">${fails ? fails + ' ca sai' : 'Tất cả đạt'}</b>\n\n`);
+document.title = fails ? 'FAIL' : 'PASS';
+</script></body></html>

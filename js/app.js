@@ -4,8 +4,9 @@ import * as store from './store.js';
 import { buildAll } from './export.js';
 import { zipFiles } from './zip.js';
 import * as lock from './lock.js';
+import { extractCss, checkCss, applyCss, buildBrief } from './theme.js';
 
-const APP_VERSION = '2026-11-02d';
+const APP_VERSION = '2026-11-03a';
 const $app = document.getElementById('app');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SLOT_OPTS = [...SLOTS.map((s) => [s, SLOT_LABEL[s]]), ['total', 'Tổng (để kiểm tra)'], ['skip', 'Bỏ qua']];
@@ -113,7 +114,7 @@ function computeAll(cfg) {
       }
       readings[meter.id] = { start: L.start, end };
       if (L.end.total !== undefined && L.end.total !== '') {
-        const c = checkTotal(end, L.end.total);
+        const c = checkTotal(end, L.end.total, 1.01, !!p.lowZero);
         checks.push({ meter, ...c });
       }
     }
@@ -384,7 +385,46 @@ function viewSettings(cfg) {
         <textarea id="cfgtext" rows="14" spellcheck="false">${esc(JSON.stringify(cfg, null, 2))}</textarea>
         <button data-act="savecfg">Lưu cấu hình</button></details>
       <p class="muted small">Hiện có ${cfg.projects.length} dự án: ${esc(cfg.projects.map((p) => p.name).join(', ') || 'chưa có')}.</p></section>
+    <section class="card"><h2>Giao diện (nhờ Gemini thiết kế)</h2>
+      <p>${s.customCss ? `Đang dùng giao diện tùy chỉnh (${Math.round(s.customCss.length / 1024)} KB).` : 'Đang dùng giao diện gốc.'}</p>
+      <ol class="small">
+        <li>Bấm <b>Tải file gửi Gemini</b> (hoặc <b>Sao chép</b>), gửi file hoặc dán vào Gemini, nhờ làm đẹp lại.</li>
+        <li>Copy toàn bộ câu trả lời của Gemini, dán vào ô bên dưới, bấm <b>Áp dụng</b>.</li>
+        <li>Không ưng thì bấm <b>Về giao diện gốc</b>.</li></ol>
+      <button data-act="themepack">Tải file gửi Gemini</button>
+      <button data-act="themecopy">Sao chép nội dung gửi Gemini</button>
+      <label>Dán trả lời của Gemini (hoặc chọn file .css) <textarea id="themetext" rows="6" spellcheck="false" placeholder="\`\`\`css ... \`\`\`"></textarea></label>
+      <button class="primary" data-act="themeapply">Áp dụng giao diện này</button>
+      <button data-act="themereset">Về giao diện gốc</button>
+      <label class="btn">Chọn file CSS <input type="file" accept=".css,.txt,.md,.html" hidden data-act="themefile"></label>
+      <p class="muted small">Chỉ đổi màu sắc và bố cục, không đổi cách tính. Nếu giao diện mới bị lỗi không bấm được, mở app bằng địa chỉ có thêm <b>?giaodien=goc</b> ở cuối để quay về bản gốc.</p></section>
     <p class="muted small ver">Phiên bản ${APP_VERSION} · đọc ảnh bằng Gemini</p>`;
+}
+
+// Gói gửi Gemini: yêu cầu thiết kế + HTML mẫu dựng từ chính hàm hiển thị (số liệu giả) + CSS gốc.
+async function geminiPack() {
+  const css = await (await fetch('css/style.css', { cache: 'no-store' })).text();
+  const p = { id: 'demo', name: 'Dự án mẫu', discount: 0.85, lowZero: true, roof: { share: 0.5 }, reactive: true, meters: [{ id: 'm1', label: 'Công tơ mẫu' }], prices: { normal: 1000, peak: 2000, low: 500 } };
+  const start = { normal: 100000, peak: 40000, low: 0 };
+  const end = { normal: 112000, peak: 44000, low: 0 };
+  const L = { meter: p.meters[0], key: mkey(p.id, 'm1'), start, end: { ...end, total: 156000 }, startFrom: '2026-09' };
+  const result = computeProject(p, { hourPrice: 500000, vat: 0.08 }, { readings: { m1: { start, end } }, prices: p.prices, roofBalance: 5000000, reactive: 0 });
+  const row = { id: 0, thumb: '', name: 'anh-cong-to-mau.jpg', serial: '12345678', register: '2.8.1', value: 112000, confidence: 'medium', assign: { key: mkey(p.id, 'm1'), slot: 'normal' } };
+  const card = projectCard({}, { p, ledgers: [L], missing: [], checks: [{ meter: p.meters[0], ok: true, diff: 0 }], result, roofBalance: 5000000 });
+  const sample = `<div id="app">
+<header class="top"><h1>Ecoshine · Chốt số</h1></header>
+<main>
+<section class="card">${periodPicker()}</section>
+<section class="card proj"><h2>${p.name}</h2>
+  <label class="drop"><input type="file" hidden><b>Chọn nhiều ảnh của ${p.name}</b><span>Ảnh công tơ hoặc ảnh chụp màn hình.</span></label>
+  <p class="progress">Đang đọc 2/5 ảnh…</p>
+  <div class="rows">${rowCard(p, row)}</div>
+  <div class="pcalc">${card}</div></section>
+</main>
+<nav class="tabs"><button class="on">Chốt tháng</button><button>Xuất file</button><button>Lịch sử</button><button>Cài đặt</button></nav>
+<div class="toast">Đã lưu</div>
+</div>`;
+  return buildBrief({ css, sample, cssUrl: new URL('css/style.css', location.href).href });
 }
 
 function toast(msg) {
@@ -537,6 +577,14 @@ $app.addEventListener('click', async (e) => {
     a.download = `ecoshine-sao-luu-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
+  } else if (act === 'themepack') {
+    saveBlob('ecoshine-giao-dien-gui-gemini.txt', new Blob([await geminiPack()], { type: 'text/plain;charset=utf-8' }));
+  } else if (act === 'themecopy') {
+    try { await navigator.clipboard.writeText(await geminiPack()); toast('Đã sao chép, dán vào Gemini'); } catch { toast('Không sao chép được, hãy dùng nút Tải file'); }
+  } else if (act === 'themeapply') {
+    setTheme(extractCss(document.getElementById('themetext').value));
+  } else if (act === 'themereset') {
+    setTheme('');
   } else if (act === 'savecfg') {
     if (!(await requireUnlock())) return;
     try {
@@ -583,6 +631,10 @@ $app.addEventListener('change', async (e) => {
     s[act === 'apikey' ? 'apiKey' : 'model'] = el.value.trim();
     store.settings.set(s);
     toast('Đã lưu');
+  } else if (act === 'themefile') {
+    const f = el.files[0];
+    el.value = '';
+    if (f) document.getElementById('themetext').value = await f.text();
   } else if (act === 'import') {
     if (!lock.canEdit()) { el.value = ''; toast('Cần mở khóa bằng PIN'); return; }
     try {
@@ -666,6 +718,26 @@ function closeMonth(pid) {
   toast(`Đã chốt ${c.p.name} kỳ ${key}: ${fmt.n1(c.result.hours)} giờ`);
   renderResults();
 }
+
+function setTheme(css) {
+  const err = css ? checkCss(css) : '';
+  if (err) { toast(err); return; }
+  const s = store.settings.get();
+  if (css) s.customCss = css; else delete s.customCss;
+  if (!store.settings.set(s)) { toast('Không lưu được vào trình duyệt, CSS có thể quá lớn'); return; }
+  applyCss(css);
+  toast(css ? 'Đã áp dụng giao diện mới' : 'Đã về giao diện gốc');
+  render();
+}
+
+// Lối thoát: giao diện tùy chỉnh bị lỗi thì mở địa chỉ kèm ?giaodien=goc để xóa nó.
+if (new URLSearchParams(location.search).get('giaodien') === 'goc') {
+  const s = store.settings.get();
+  delete s.customCss;
+  store.settings.set(s);
+  history.replaceState(null, '', location.pathname);
+}
+applyCss(store.settings.get().customCss || '');
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});

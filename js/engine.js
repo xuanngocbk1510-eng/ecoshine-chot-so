@@ -99,9 +99,11 @@ export function computeProject(project, rates, input) {
 }
 
 // Kiểm tra chéo: 2.8.1 + 2.8.2 + 2.8.3 phải bằng 2.8.0 (sai số cho phép do làm tròn hiển thị).
-export function checkTotal(slots, total, tolerance = 1.01) {
+// maxOnly: dự án bỏ thấp điểm có khung thấp điểm lấy bằng đầu kỳ nên tổng công tơ được phép lớn hơn; chỉ báo khi ba khung vượt tổng.
+export function checkTotal(slots, total, tolerance = 1.01, maxOnly = false) {
   const sum = SLOTS.reduce((a, s) => a + num(slots[s]), 0);
-  return { sum, diff: sum - num(total), ok: Math.abs(sum - num(total)) <= tolerance };
+  const diff = sum - num(total);
+  return { sum, diff, ok: maxOnly ? diff <= tolerance : Math.abs(diff) <= tolerance };
 }
 
 // Ngày cuối tháng (month 1..12).

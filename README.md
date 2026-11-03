@@ -43,8 +43,11 @@ Bộ test: `tests/export.test.html`.
 - **Mã PIN** (Cài đặt) khóa việc sửa đơn giá, số dư mái tôn, bù trừ, phản kháng, nạp cấu hình, nạp sao lưu và xóa lịch sử. Mở khóa 10 phút, tự khóa khi rời app. Chỉ lưu dấu băm PBKDF2 trong trình duyệt từng thiết bị. Đây là khóa mềm, không thay cho việc giữ thiết bị an toàn.
 
 ## Toàn Cầu 1 và 2
-- Toàn Cầu 1: hai công tơ cộng lại; thu hồi chi phí mái tôn = 50% tiền tiết kiệm (**cộng** vào tiền khách trả, không vượt số dư); bù trừ kỳ trước (số có dấu); phản kháng (trừ). Chưa nhập số dư mái tôn thì app không tính.
+- Toàn Cầu 1: hai công tơ cộng lại, bỏ dòng thấp điểm (`lowZero`); thu hồi chi phí mái tôn = 50% tiền tiết kiệm (**cộng** vào tiền khách trả, không vượt số dư); phản kháng (trừ). Chưa nhập số dư mái tôn thì app không tính. Cấu hình vẫn hỗ trợ khoản `adjust` (bù trừ kỳ trước, số có dấu) cho dự án nào cần.
 - Toàn Cầu 2: một công tơ, chỉ số giữ phần thập phân.
+
+## Giao diện do Gemini thiết kế
+Cài đặt > Giao diện: tải (hoặc sao chép) gói gửi Gemini gồm yêu cầu thiết kế, HTML mẫu dựng từ chính app với số liệu giả, và CSS gốc. Dán câu trả lời của Gemini vào ô rồi Áp dụng; app tự lấy khối ```css và lưu trong trình duyệt thiết bị đó (`ecs.settings.customCss`), nạp đè sau `css/style.css`. Chỉ đổi CSS nên không ảnh hưởng cách tính. Giao diện lỗi thì mở app với `?giaodien=goc` để xóa. Mã: `js/theme.js`, test: `tests/theme.test.html`.
 
 ## Còn làm tiếp
 - Giai đoạn 4: đồng bộ lịch sử giữa điện thoại và máy tính qua kho riêng tư.

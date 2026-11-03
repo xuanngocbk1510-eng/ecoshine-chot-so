@@ -1,5 +1,5 @@
 // Lưu vỏ app để mở nhanh và dùng được khi mạng chập chờn. Không bao giờ lưu cuộc gọi tới API.
-const CACHE = 'ecs-v11';
+const CACHE = 'ecs-v12';
 const SHELL = ['./', 'index.html', 'css/style.css', 'js/app.js', 'js/engine.js', 'js/ocr.js', 'js/store.js', 'js/export.js', 'js/zip.js', 'js/lock.js', 'js/theme.js', 'js/vendor/exceljs.min.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/logo-ecoshine.png', 'icons/banner-dau-trang.webp', 'icons/hoa-tiet-nen.svg'];
 
 self.addEventListener('install', (e) => {

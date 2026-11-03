@@ -6,7 +6,7 @@ import { zipFiles } from './zip.js';
 import * as lock from './lock.js';
 import { extractCss, checkCss, applyCss, buildBrief } from './theme.js';
 
-const APP_VERSION = '2026-11-03e';
+const APP_VERSION = '2026-11-03f';
 const $app = document.getElementById('app');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SVG = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -115,12 +115,13 @@ function computeAll(cfg) {
       const L = gatherLedger(cfg, p, meter);
       ledgers.push({ meter, ...L });
       const end = { ...L.end };
-      if (p.lowZero) end.low = L.start.low ?? 0; // thấp điểm bỏ qua: cuối kỳ = đầu kỳ, kWh = 0
+      const start = { ...L.start };
+      if (p.lowZero) { start.low = start.low ?? 0; end.low = start.low; } // thấp điểm bỏ qua: cuối kỳ = đầu kỳ, kWh = 0
       for (const s of SLOTS) {
         if (end[s] === undefined || end[s] === '' || end[s] === null) missing.push(`${meter.label || meter.id}: ${SLOT_LABEL[s].toLowerCase()}`);
-        if (L.start[s] === undefined || L.start[s] === '') missing.push(`${meter.label || meter.id}: đầu kỳ ${SLOT_LABEL[s].toLowerCase()}`);
+        if (start[s] === undefined || start[s] === '') missing.push(`${meter.label || meter.id}: đầu kỳ ${SLOT_LABEL[s].toLowerCase()}`);
       }
-      readings[meter.id] = { start: L.start, end };
+      readings[meter.id] = { start, end };
       if (L.end.total !== undefined && L.end.total !== '') {
         const c = checkTotal(end, L.end.total, 1.01, !!p.lowZero);
         checks.push({ meter, ...c });

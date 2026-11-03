@@ -6,7 +6,7 @@ import { zipFiles } from './zip.js';
 import * as lock from './lock.js';
 import { extractCss, checkCss, applyCss, buildBrief } from './theme.js';
 
-const APP_VERSION = '2026-11-03c';
+const APP_VERSION = '2026-11-03d';
 const $app = document.getElementById('app');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SVG = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -16,6 +16,7 @@ const TAB_ICON = {
   lichsu: SVG('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>'),
   caidat: SVG('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
 };
+const PROJECT_IMG = { pvc: 'pvc-phu-tho', tc1: 'toan-cau-1', tc2: 'toan-cau-2' };
 const SLOT_OPTS = [...SLOTS.map((s) => [s, SLOT_LABEL[s]]), ['total', 'Tổng (để kiểm tra)'], ['skip', 'Bỏ qua']];
 
 function defaultPeriod() {
@@ -187,7 +188,7 @@ function viewChot(cfg) {
       ${prog ? `<p class="progress" data-zone="${esc(zk)}">Đang đọc ${prog.done}/${prog.total} ảnh…</p>` : ''}
       ${rows.length ? `<div class="rows">${rows.map((r) => rowCard(p, r)).join('')}</div>` : ''}</div>`;
     }).join('');
-    return `<section class="card proj" data-pid="${esc(p.id)}" ${multi ? '' : `data-mid="${esc(p.meters[0].id)}"`}><h2>${esc(p.name)}</h2>${zones}
+    return `<section class="card proj" data-pid="${esc(p.id)}" ${multi ? '' : `data-mid="${esc(p.meters[0].id)}"`}><div class="projhead">${PROJECT_IMG[p.id] ? `<img class="pthumb" src="icons/du-an-${PROJECT_IMG[p.id]}.webp" alt="" onerror="this.remove()">` : ''}<h2>${esc(p.name)}</h2></div>${zones}
       <div class="pcalc" data-pid="${esc(p.id)}"></div></section>`;
   }).join('')}`;
 }

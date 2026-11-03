@@ -64,3 +64,4 @@ dialog.pin .pinerr { color: var(--bad); font-size: 13px; margin: 6px 0 0; }
 dialog.pin .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
 .proj .drop { margin: 0 0 8px; }
 .proj .rows { margin-bottom: 8px; }
+.zone { margin: 0 0 14px; } .zone h3 { margin: 12px 0 6px; font-size: 16px; } .zone h3 small { color: var(--muted); font-weight: 400; }

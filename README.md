@@ -45,6 +45,7 @@ Bộ test: `tests/export.test.html`.
 ## Toàn Cầu 1 và 2
 - Toàn Cầu 1: hai công tơ cộng lại, bỏ dòng thấp điểm (`lowZero`); thu hồi chi phí mái tôn = 50% tiền tiết kiệm (**cộng** vào tiền khách trả, không vượt số dư); phản kháng (trừ). Chưa nhập số dư mái tôn thì app không tính. Cấu hình vẫn hỗ trợ khoản `adjust` (bù trừ kỳ trước, số có dấu) cho dự án nào cần.
 - Toàn Cầu 2: một công tơ, chỉ số giữ phần thập phân.
+- Mỗi **công tơ** có một ổ nhập ảnh riêng (Toàn Cầu 1 có hai ổ: công tơ 1 và công tơ 2). Ảnh thả vào ổ nào gán cho công tơ đó; số seri của công tơ khác thì cảnh báo đỏ và không gán.
 
 ## Giao diện do Gemini thiết kế
 Cài đặt > Giao diện: tải (hoặc sao chép) gói gửi Gemini gồm yêu cầu thiết kế, HTML mẫu dựng từ chính app với số liệu giả, và CSS gốc. Dán câu trả lời của Gemini vào ô rồi Áp dụng; app tự lấy khối ```css và lưu trong trình duyệt thiết bị đó (`ecs.settings.customCss`), nạp đè sau `css/style.css`. Chỉ đổi CSS nên không ảnh hưởng cách tính. Giao diện lỗi thì mở app với `?giaodien=goc` để xóa. Mã: `js/theme.js`, test: `tests/theme.test.html`.

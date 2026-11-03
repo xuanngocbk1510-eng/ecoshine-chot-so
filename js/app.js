@@ -6,7 +6,7 @@ import { zipFiles } from './zip.js';
 import * as lock from './lock.js';
 import { extractCss, checkCss, applyCss, buildBrief } from './theme.js';
 
-const APP_VERSION = '2026-11-03a';
+const APP_VERSION = '2026-11-03b';
 const $app = document.getElementById('app');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SLOT_OPTS = [...SLOTS.map((s) => [s, SLOT_LABEL[s]]), ['total', 'Tổng (để kiểm tra)'], ['skip', 'Bỏ qua']];
@@ -23,7 +23,7 @@ const state = {
   period: defaultPeriod(),
   rows: [],          // mỗi chỉ số đọc được từ ảnh
   progress: {},      // pid -> {done, total}
-  activePid: null,   // dự án anh vừa chạm vào, dùng cho dán ảnh (Ctrl+V)
+  activeZone: null,  // {pid, mid}: ô nhập anh vừa chạm vào, dùng cho dán ảnh (Ctrl+V)
   ends: {},          // `${pid}/${mid}` -> {normal, peak, low, total}
   manual: {},        // pid -> {reactive, adjust, roofBalance}
   exported: null,    // kết quả lần xuất file gần nhất {key, files, issues, notes}
@@ -50,18 +50,18 @@ function normSerial(s) {
 // Khung giờ hiển thị và tính cho từng dự án: dự án thấp điểm luôn bằng 0 thì bỏ hẳn dòng thấp điểm.
 const slotsOf = (p) => (p.lowZero ? SLOTS.filter((s) => s !== 'low') : SLOTS);
 
-// Mỗi dự án có ô nhập riêng nên ảnh chỉ được gán cho công tơ của chính dự án đó.
-function autoAssign(cfg, pid, serial, register) {
+// Mỗi công tơ có ô nhập riêng nên ảnh thả vào ô nào được gán cho đúng công tơ đó; số seri khác công tơ này thì cảnh báo và không gán.
+function autoAssign(cfg, pid, mid, serial, register) {
   const p = cfg.projects.find((x) => x.id === pid);
   let slot = registerToSlot(register) ?? 'skip';
   if (slot === 'low' && p.lowZero) slot = 'skip';
   const sn = normSerial(serial);
-  const mine = sn && p.meters.find((m) => normSerial(m.serial) === sn);
-  if (mine) return { key: mkey(pid, mine.id), slot };
-  const other = sn && allMeters(cfg).find(({ p: op, m }) => op.id !== pid && normSerial(m.serial) === sn);
-  if (other) return { key: '', slot, foreign: other.p.name };
-  if (p.meters.length === 1) return { key: mkey(pid, p.meters[0].id), slot, serialMismatch: !!sn };
-  return { key: '', slot };
+  const key = mkey(pid, mid);
+  const here = p.meters.find((m) => m.id === mid);
+  if (sn && normSerial(here?.serial) === sn) return { key, slot };
+  const other = sn && allMeters(cfg).find(({ key: k, m }) => k !== key && normSerial(m.serial) === sn);
+  if (other) return { key: '', slot, foreign: other.p.id === pid ? `${other.p.name} (${other.m.label || other.m.id})` : other.p.name };
+  return { key, slot, serialMismatch: !!sn };
 }
 
 function parsePhotoMonth(text) {
@@ -160,20 +160,27 @@ function viewChot(cfg) {
   if (!workProjects(cfg).length) {
     return `<section class="card"><h2>Chưa có dự án</h2><p>Vào <b>Cài đặt</b> để nhập cấu hình (file .json anh đã có) và khóa API.</p></section>`;
   }
-  // Mỗi dự án một ổ nhập riêng: ảnh thả vào ổ nào chỉ tính cho dự án đó, không lẫn sang dự án khác.
+  // Mỗi công tơ một ổ nhập riêng: ảnh thả vào ổ nào chỉ tính cho công tơ đó, không lẫn sang công tơ hay dự án khác.
   return `
     <section class="card">${periodPicker()}</section>
     ${workProjects(cfg).map((p) => {
-    const prog = state.progress[p.id];
-    const rows = state.rows.filter((r) => r.pid === p.id);
-    return `<section class="card proj" data-pid="${esc(p.id)}"><h2>${esc(p.name)}</h2>
-      <label class="drop" data-pid="${esc(p.id)}">
-        <input type="file" accept="image/*" multiple hidden data-act="files" data-pid="${esc(p.id)}">
-        <b>Chọn nhiều ảnh của ${esc(p.name)}</b>
+    const multi = p.meters.length > 1;
+    const zones = p.meters.map((m) => {
+      const zk = mkey(p.id, m.id);
+      const prog = state.progress[zk];
+      const rows = state.rows.filter((r) => r.pid === p.id && r.mid === m.id);
+      const title = multi ? `Ảnh ${esc(m.label || m.id)}` : `Chọn nhiều ảnh của ${esc(p.name)}`;
+      return `<div class="zone" data-pid="${esc(p.id)}" data-mid="${esc(m.id)}">
+      ${multi ? `<h3>${esc(m.label || m.id)}${m.serial ? `<small> · số sx ${esc(m.serial)}</small>` : ''}</h3>` : ''}
+      <label class="drop" data-pid="${esc(p.id)}" data-mid="${esc(m.id)}">
+        <input type="file" accept="image/*" multiple hidden data-act="files" data-pid="${esc(p.id)}" data-mid="${esc(m.id)}">
+        <b>${title}</b>
         <span>Ảnh công tơ hoặc ảnh chụp màn hình. Trên máy tính có thể kéo thả vào ô này hoặc bấm vào ô rồi dán (Ctrl+V).</span>
       </label>
-      ${prog ? `<p class="progress" data-pid="${esc(p.id)}">Đang đọc ${prog.done}/${prog.total} ảnh…</p>` : ''}
-      ${rows.length ? `<div class="rows">${rows.map((r) => rowCard(p, r)).join('')}</div>` : ''}
+      ${prog ? `<p class="progress" data-zone="${esc(zk)}">Đang đọc ${prog.done}/${prog.total} ảnh…</p>` : ''}
+      ${rows.length ? `<div class="rows">${rows.map((r) => rowCard(p, r)).join('')}</div>` : ''}</div>`;
+    }).join('');
+    return `<section class="card proj" data-pid="${esc(p.id)}" ${multi ? '' : `data-mid="${esc(p.meters[0].id)}"`}><h2>${esc(p.name)}</h2>${zones}
       <div class="pcalc" data-pid="${esc(p.id)}"></div></section>`;
   }).join('')}`;
 }
@@ -193,7 +200,7 @@ function rowCard(p, r) {
     r.confidence && r.confidence !== 'high' ? `<span class="flag warn">Độ tin cậy ${r.confidence === 'medium' ? 'vừa' : 'thấp'}</span>` : '',
     r.dup ? '<span class="flag bad">Trùng ô, hai số khác nhau</span>' : '',
     r.assign?.foreign ? `<span class="flag bad">Số seri này là công tơ của ${esc(r.assign.foreign)}. Anh bỏ nhầm ô? Em chưa gán ảnh này.</span>` : '',
-    r.assign?.serialMismatch ? `<span class="flag warn">Số seri đọc được (${esc(r.serial)}) không khớp công tơ đã cấu hình, em gán vào công tơ duy nhất của dự án. Anh kiểm tra lại.</span>` : '',
+    r.assign?.serialMismatch ? `<span class="flag warn">Số seri đọc được (${esc(r.serial)}) không khớp công tơ này trong cấu hình, em vẫn gán vào ô anh thả. Anh kiểm tra lại.</span>` : '',
     stale ? `<span class="flag warn">Ảnh chụp ${esc(r.photoTime)}, khác kỳ chốt</span>` : '',
     r.error ? `<span class="flag bad">${esc(r.error)}</span>` : '',
   ].join('');
@@ -416,9 +423,10 @@ async function geminiPack() {
 <main>
 <section class="card">${periodPicker()}</section>
 <section class="card proj"><h2>${p.name}</h2>
-  <label class="drop"><input type="file" hidden><b>Chọn nhiều ảnh của ${p.name}</b><span>Ảnh công tơ hoặc ảnh chụp màn hình.</span></label>
+  <div class="zone"><h3>Công tơ mẫu<small> · số sx 12345678</small></h3>
+  <label class="drop"><input type="file" hidden><b>Ảnh Công tơ mẫu</b><span>Ảnh công tơ hoặc ảnh chụp màn hình.</span></label>
   <p class="progress">Đang đọc 2/5 ảnh…</p>
-  <div class="rows">${rowCard(p, row)}</div>
+  <div class="rows">${rowCard(p, row)}</div></div>
   <div class="pcalc">${card}</div></section>
 </main>
 <nav class="tabs"><button class="on">Chốt tháng</button><button>Xuất file</button><button>Lịch sử</button><button>Cài đặt</button></nav>
@@ -477,30 +485,31 @@ document.addEventListener('visibilitychange', () => {
 
 // ---------- Đọc ảnh ----------
 
-async function handleFiles(fileList, pid) {
+async function handleFiles(fileList, pid, mid) {
   const files = [...fileList].filter((f) => f.type.startsWith('image/'));
-  if (!files.length || !pid) return;
+  if (!files.length || !pid || !mid) return;
+  const zk = mkey(pid, mid);
   const { apiKey, model } = store.settings.get();
   if (!apiKey) {
     toast('Chưa có khóa API. Vào Cài đặt nhập khóa trước.');
     return;
   }
   const cfg = store.config.get();
-  const prog = state.progress[pid] = { done: 0, total: files.length };
+  const prog = state.progress[zk] = { done: 0, total: files.length };
   render();
   const results = await readMany(files, {
     apiKey, model: model && !/^claude/i.test(model) ? model : DEFAULT_MODEL,
     onProgress: (i, st) => {
       if (st === 'done' || st === 'error') {
         prog.done += 1;
-        const el = document.querySelector(`.progress[data-pid="${CSS.escape(pid)}"]`);
+        const el = document.querySelector(`.progress[data-zone="${CSS.escape(zk)}"]`);
         if (el) el.textContent = `Đang đọc ${prog.done}/${prog.total} ảnh…`;
       }
     },
   });
   for (const res of results) {
     if (!res.ok) {
-      state.rows.push({ id: ++rowSeq, pid, name: res.name, error: res.error });
+      state.rows.push({ id: ++rowSeq, pid, mid, name: res.name, error: res.error });
       continue;
     }
     const { parsed } = res;
@@ -508,16 +517,16 @@ async function handleFiles(fileList, pid) {
     for (const m of parsed.meters || []) {
       for (const rd of m.readings || []) {
         state.rows.push({
-          id: ++rowSeq, pid, name: res.name, thumb: res.thumb, serial: m.serial, register: rd.register,
+          id: ++rowSeq, pid, mid, name: res.name, thumb: res.thumb, serial: m.serial, register: rd.register,
           value: typeof rd.value === 'number' ? rd.value : null, confidence: rd.confidence,
-          photoTime: parsed.photo_time, note: parsed.note, assign: autoAssign(cfg, pid, m.serial, rd.register),
+          photoTime: parsed.photo_time, note: parsed.note, assign: autoAssign(cfg, pid, mid, m.serial, rd.register),
         });
         added += 1;
       }
     }
-    if (!added) state.rows.push({ id: ++rowSeq, pid, name: res.name, thumb: res.thumb, note: parsed.note || 'Không thấy chỉ số trong ảnh', error: 'Không đọc được chỉ số' });
+    if (!added) state.rows.push({ id: ++rowSeq, pid, mid, name: res.name, thumb: res.thumb, note: parsed.note || 'Không thấy chỉ số trong ảnh', error: 'Không đọc được chỉ số' });
   }
-  delete state.progress[pid];
+  delete state.progress[zk];
   rebuildEnds();
   render();
 }
@@ -599,7 +608,7 @@ $app.addEventListener('change', async (e) => {
   const el = e.target.closest('[data-act]');
   if (!el) return;
   const act = el.dataset.act;
-  if (act === 'files') { const pid = el.dataset.pid; const list = [...el.files]; el.value = ''; await handleFiles(list, pid); }
+  if (act === 'files') { const { pid, mid } = el.dataset; const list = [...el.files]; el.value = ''; await handleFiles(list, pid, mid); }
   else if (act === 'month') { state.period.month = Number(el.value); state.ends = {}; state.rows = []; state.exported = null; render(); }
   else if (act === 'year') { state.period.year = Number(el.value); state.ends = {}; state.rows = []; state.exported = null; render(); }
   else if (act === 'manualhours') {
@@ -673,26 +682,27 @@ function refocus(el) {
   }
 }
 
-// Dán ảnh (Ctrl+V) chỉ vào dự án anh vừa chạm; thả ảnh thì vào đúng ô nhập anh thả.
+// Dán ảnh (Ctrl+V) chỉ vào ô anh vừa chạm; thả ảnh thì vào đúng ô nhập anh thả.
+// Dự án một công tơ thì chạm chỗ nào trong thẻ cũng tính là ô của công tơ đó; dự án nhiều công tơ phải chạm vào đúng ô của công tơ.
 $app.addEventListener('pointerdown', (e) => {
-  const s = e.target.closest('.proj');
-  if (s) state.activePid = s.dataset.pid;
+  const s = e.target.closest('.zone') || e.target.closest('.proj[data-mid]');
+  if (s) state.activeZone = { pid: s.dataset.pid, mid: s.dataset.mid };
 });
 document.addEventListener('paste', (e) => {
   if (state.tab !== 'chot') return;
   const files = [...(e.clipboardData?.files || [])];
   if (!files.length) return;
   e.preventDefault();
-  if (!state.activePid) { toast('Chạm vào ô của dự án trước rồi hãy dán ảnh'); return; }
-  handleFiles(files, state.activePid);
+  if (!state.activeZone) { toast('Chạm vào ô của công tơ trước rồi hãy dán ảnh'); return; }
+  handleFiles(files, state.activeZone.pid, state.activeZone.mid);
 });
 document.addEventListener('dragover', (e) => e.preventDefault());
 document.addEventListener('drop', (e) => {
   e.preventDefault();
   const zone = e.target.closest?.('.drop');
   if (state.tab !== 'chot' || !e.dataTransfer?.files?.length) return;
-  if (!zone) { toast('Thả ảnh vào đúng ô của dự án'); return; }
-  handleFiles(e.dataTransfer.files, zone.dataset.pid);
+  if (!zone) { toast('Thả ảnh vào đúng ô của công tơ'); return; }
+  handleFiles(e.dataTransfer.files, zone.dataset.pid, zone.dataset.mid);
 });
 
 function closeMonth(pid) {
